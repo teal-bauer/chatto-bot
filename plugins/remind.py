@@ -266,11 +266,12 @@ class Remind(Cog):
         reminders.append(reminder)
         self._save(reminders)
 
-        due_str = due_at.strftime("%Y-%m-%d %H:%M UTC")
+        date_str = due_at.strftime("%Y-%m-%d")
+        time_str = due_at.strftime("%H:%M UTC")
         target_str = "you" if target_id == actor.id else f"**{target_display}**"
         await ctx.react("⏰")
         await ctx.reply(
-            f"Reminder set for {target_str} at {due_str}: {message} (id: `{reminder['id']}`)"
+            f"Ok, I'll remind {target_str} on {date_str} at {time_str} to {message}"
         )
 
     @command(desc="List your pending reminders")
