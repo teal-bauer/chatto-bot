@@ -1,0 +1,20 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "chatto-bot"
+version = "0.1.0"
+description = "Python bot framework for Chatto"
+requires-python = ">=3.11"
+dependencies = [
+    "websockets>=13.0",
+    "httpx>=0.27",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "pytest-asyncio"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/chatto_bot"]
