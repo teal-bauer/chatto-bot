@@ -1,7 +1,12 @@
 """Test bot for the bot-testing room with basic commands."""
 
+import os
 import random
+import sys
 import time
+
+# Ensure CWD is on the path so plugins/ can be imported as extensions
+sys.path.insert(0, os.getcwd())
 
 from chatto_bot import Bot, Context
 
@@ -10,6 +15,7 @@ bot = Bot(
     prefix="!",
     dms=True,
 )
+bot.config.extensions = ["plugins.remind"]
 
 _start_time = time.monotonic()
 

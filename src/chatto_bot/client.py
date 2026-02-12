@@ -235,6 +235,27 @@ class Client:
             return []
         return [r for r in space.get("rooms", []) if not r.get("archived")]
 
+    async def search_space_members(
+        self, space_id: str, search: str, limit: int = 5
+    ) -> list[dict]:
+        """Search for members in a space by display name."""
+        data = await self.query(
+            """
+            query SearchMembers($spaceId: ID!, $search: String!, $limit: Int) {
+                space(id: $spaceId) {
+                    members(search: $search, limit: $limit) {
+                        users { id login displayName }
+                    }
+                }
+            }
+            """,
+            {"spaceId": space_id, "search": search, "limit": limit},
+        )
+        space = data.get("space")
+        if not space:
+            return []
+        return space.get("members", {}).get("users", [])
+
     async def get_room_events(
         self,
         space_id: str,
