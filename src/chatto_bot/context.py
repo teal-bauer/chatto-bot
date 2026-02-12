@@ -49,6 +49,11 @@ class Context:
         return ""
 
     @property
+    def is_dm(self) -> bool:
+        """Whether this event is from a direct message."""
+        return self.space_id == "DM"
+
+    @property
     def body(self) -> str | None:
         """Message body, if the event is a message type."""
         inner = self.event.event

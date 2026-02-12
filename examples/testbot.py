@@ -8,6 +8,7 @@ from chatto_bot import Bot, Context
 bot = Bot(
     spaces=["SjH0ry5SFndJrZy"],
     prefix="!",
+    dms=True,
 )
 
 _start_time = time.monotonic()
@@ -131,6 +132,17 @@ async def help(ctx: Context, command_name: str = ""):
             desc = cmd.help_text or "No description"
             lines.append(f"- `!{cmd.name}` — {desc}")
         await ctx.reply("\n".join(lines))
+
+
+@bot.on_event("message_posted")
+async def dm_greeting(ctx: Context):
+    """Greet users who DM the bot."""
+    if not ctx.is_dm:
+        return
+    body = (ctx.body or "").lower().strip()
+    if body in ("hi", "hello", "hey"):
+        name = ctx.actor.display_name if ctx.actor else "there"
+        await ctx.reply(f"Hey {name}! I work in DMs too. Try `!help` for commands.")
 
 
 @bot.on_event("message_posted")

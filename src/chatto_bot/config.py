@@ -35,6 +35,7 @@ class BotConfig:
     extensions: list[str] = field(default_factory=list)
     log_level: str = "INFO"
     session: str = ""
+    dms: bool = True
 
     @classmethod
     def load(
@@ -45,6 +46,7 @@ class BotConfig:
         prefix: str | None = None,
         spaces: list[str] | None = None,
         session: str | None = None,
+        dms: bool | None = None,
     ) -> BotConfig:
         """Load config from YAML file, then overlay env vars, then explicit args."""
         data: dict = {}
@@ -65,6 +67,7 @@ class BotConfig:
             spaces=data.get("spaces", []),
             extensions=data.get("extensions", []),
             log_level=data.get("log_level", cls.log_level),
+            dms=data.get("dms", cls.dms),
         )
 
         # 2. Environment variables
@@ -73,6 +76,8 @@ class BotConfig:
         if env_prefix := os.environ.get("CHATTO_PREFIX"):
             config.prefix = env_prefix
         config.session = os.environ.get("CHATTO_SESSION", "")
+        if env_dms := os.environ.get("CHATTO_DMS"):
+            config.dms = env_dms.lower() not in ("0", "false", "no")
 
         # 3. Explicit arguments (highest priority)
         if instance is not None:
@@ -83,6 +88,8 @@ class BotConfig:
             config.spaces = spaces
         if session is not None:
             config.session = session
+        if dms is not None:
+            config.dms = dms
 
         return config
 

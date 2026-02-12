@@ -40,14 +40,17 @@ class Bot:
         spaces: list[str] | None = None,
         session: str | None = None,
         config_path: str | None = None,
+        dms: bool | None = None,
     ) -> None:
-        self.config = BotConfig.load(
-            config_path,
-            instance=instance,
-            prefix=prefix,
-            spaces=spaces,
-            session=session,
-        )
+        self._config_path = config_path
+        self._init_kwargs = {
+            "instance": instance,
+            "prefix": prefix,
+            "spaces": spaces,
+            "session": session,
+            "dms": dms,
+        }
+        self.config = BotConfig.load(config_path, **self._init_kwargs)
         self.client = Client(self.config)
         self._subscriptions = SubscriptionManager(self.config)
         self._middleware = MiddlewareChain()
@@ -61,11 +64,20 @@ class Bot:
         # Bot's own user (populated on connect)
         self.user: User | None = None
         self._closed = False
+        self._stop_event: asyncio.Event | None = None
 
         # Persistent state: last processed event timestamp per space
         self._state_path = Path(".chatto-bot-state.json")
         self._cursor: dict[str, str] = {}  # space_id -> last created_at
         self._load_state()
+
+    @property
+    def _all_spaces(self) -> list[str]:
+        """All space IDs to subscribe to, including DM if enabled."""
+        spaces = list(self.config.spaces)
+        if self.config.dms and "DM" not in spaces:
+            spaces.append("DM")
+        return spaces
 
     # --- Command registration ---
 
@@ -250,6 +262,7 @@ class Bot:
         # Advance cursor so we don't re-process on next restart
         if ctx_space := (getattr(event.event, "space_id", None) or ""):
             self._advance_cursor(ctx_space, event.created_at)
+            self._save_state()
 
         ctx = Context(self, event)
         etype = event_name(event.event)
@@ -396,17 +409,18 @@ class Bot:
             except Exception:
                 logger.exception("Failed to load extension: %s", ext)
 
-        # Start subscriptions for each configured space
-        if not self.config.spaces:
+        # Start subscriptions for each configured space (+ DMs if enabled)
+        all_spaces = self._all_spaces
+        if not all_spaces:
             logger.warning("No spaces configured — bot won't receive events")
             return
 
         # Replay missed events from the last hour
-        for space_id in self.config.spaces:
+        for space_id in all_spaces:
             await self._replay_missed(space_id)
 
         # Start live subscriptions
-        for space_id in self.config.spaces:
+        for space_id in all_spaces:
             self._subscriptions.start(space_id, self._dispatch)
 
     async def close(self) -> None:
@@ -423,6 +437,57 @@ class Bot:
         for name in list(self._cogs.keys()):
             await self.remove_cog(name)
 
+        # Unblock _runner if it's waiting
+        if self._stop_event:
+            self._stop_event.set()
+
+    async def _reload(self) -> None:
+        """Reload config, reconnect subscriptions, and reload extensions."""
+        logger.info("Reloading...")
+        self._save_state()
+
+        # Stop current subscriptions
+        await self._subscriptions.stop()
+        await self.client.close()
+
+        # Re-read config (YAML / .env / env vars), keeping explicit overrides
+        self.config = BotConfig.load(self._config_path, **self._init_kwargs)
+        self.client = Client(self.config)
+        self._subscriptions = SubscriptionManager(self.config)
+
+        # Verify auth still works
+        me_data = await self.client.me()
+        if not me_data:
+            logger.error("Authentication failed after reload — check session")
+            return
+
+        self.user = User(
+            id=me_data["id"],
+            login=me_data["login"],
+            display_name=me_data["displayName"],
+            avatar_url=me_data.get("avatarUrl"),
+            presence_status=me_data.get("presenceStatus", "OFFLINE"),
+        )
+        logger.info(
+            "Re-authenticated as %s (%s)", self.user.display_name, self.user.login
+        )
+
+        # Reload extensions
+        for ext_name in list(self._extensions.keys()):
+            try:
+                await self.reload_extension(ext_name)
+            except Exception:
+                logger.exception("Failed to reload extension: %s", ext_name)
+
+        # Replay and resubscribe
+        all_spaces = self._all_spaces
+        for space_id in all_spaces:
+            await self._replay_missed(space_id)
+        for space_id in all_spaces:
+            self._subscriptions.start(space_id, self._dispatch)
+
+        logger.info("Reload complete")
+
     def run(self) -> None:
         """Blocking entry point. Starts the event loop and runs until interrupted."""
         logging.basicConfig(
@@ -432,9 +497,10 @@ class Bot:
         )
 
         async def _runner() -> None:
+            self._stop_event = asyncio.Event()
             loop = asyncio.get_running_loop()
 
-            # Graceful shutdown on signals
+            # Signal handlers
             for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
                 loop.add_signal_handler(
                     sig, lambda s=sig: asyncio.create_task(self._handle_signal(s))
@@ -442,13 +508,7 @@ class Bot:
 
             try:
                 await self.start()
-                # Keep running until subscriptions end
-                tasks = list(self._subscriptions._tasks.values())
-                if tasks:
-                    await asyncio.gather(*tasks, return_exceptions=True)
-                else:
-                    # No spaces = just wait (useful for testing)
-                    await asyncio.Event().wait()
+                await self._stop_event.wait()
             except asyncio.CancelledError:
                 pass
             finally:
@@ -457,5 +517,12 @@ class Bot:
         asyncio.run(_runner())
 
     async def _handle_signal(self, sig: signal.Signals) -> None:
-        logger.info("Received %s, shutting down...", sig.name)
-        await self.close()
+        if sig == signal.SIGHUP:
+            logger.info("Received SIGHUP, reloading...")
+            try:
+                await self._reload()
+            except Exception:
+                logger.exception("Reload failed")
+        else:
+            logger.info("Received %s, shutting down...", sig.name)
+            await self.close()

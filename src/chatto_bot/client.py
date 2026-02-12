@@ -191,6 +191,21 @@ class Client:
         )
         return data["removeReaction"]
 
+    async def start_dm(self, participant_ids: list[str]) -> dict:
+        """Start or get an existing DM room."""
+        data = await self.mutate(
+            """
+            mutation StartDM($participantIds: [ID!]!) {
+                startDM(participantIds: $participantIds) {
+                    id name spaceId
+                    members { user { id login displayName } }
+                }
+            }
+            """,
+            {"participantIds": participant_ids},
+        )
+        return data["startDM"]
+
     async def get_rooms(self, space_id: str) -> list[dict]:
         """Get all rooms the bot is a member of in a space."""
         data = await self.query(
