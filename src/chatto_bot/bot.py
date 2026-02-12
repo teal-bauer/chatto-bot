@@ -11,7 +11,7 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Any, Callable, Awaitable
 
-from .client import Client
+from .client import Client, login
 from .cog import Cog
 from .command import Command, CommandError, command
 from .config import BotConfig
@@ -41,6 +41,8 @@ class Bot:
         session: str | None = None,
         config_path: str | None = None,
         dms: bool | None = None,
+        email: str | None = None,
+        password: str | None = None,
     ) -> None:
         self._config_path = config_path
         self._init_kwargs = {
@@ -48,6 +50,8 @@ class Bot:
             "prefix": prefix,
             "spaces": spaces,
             "session": session,
+            "email": email,
+            "password": password,
             "dms": dms,
         }
         self.config = BotConfig.load(config_path, **self._init_kwargs)
@@ -382,13 +386,29 @@ class Bot:
 
     # --- Lifecycle ---
 
+    async def _ensure_session(self) -> None:
+        """Log in with email/password if no session cookie is set."""
+        if self.config.session:
+            return
+        if not self.config.email or not self.config.password:
+            return
+        logger.info("Logging in as %s...", self.config.email)
+        self.config.session = await login(
+            self.config.instance, self.config.email, self.config.password,
+        )
+        self.client = Client(self.config)
+        self._subscriptions = SubscriptionManager(self.config)
+        logger.info("Login successful")
+
     async def start(self) -> None:
         """Connect to the API, verify auth, and start subscriptions."""
+        await self._ensure_session()
+
         # Verify authentication
         me_data = await self.client.me()
         if not me_data:
             raise RuntimeError(
-                "Authentication failed. Check CHATTO_SESSION env var."
+                "Authentication failed. Set CHATTO_SESSION or CHATTO_EMAIL + CHATTO_PASSWORD."
             )
 
         self.user = User(
@@ -454,6 +474,9 @@ class Bot:
         self.config = BotConfig.load(self._config_path, **self._init_kwargs)
         self.client = Client(self.config)
         self._subscriptions = SubscriptionManager(self.config)
+
+        # Login if needed (may recreate client/subscriptions)
+        await self._ensure_session()
 
         # Verify auth still works
         me_data = await self.client.me()

@@ -23,6 +23,18 @@ class GraphQLError(Exception):
         super().__init__(f"GraphQL errors: {'; '.join(messages)}")
 
 
+async def login(instance: str, identifier: str, password: str) -> str:
+    """Log in with email/password and return the session cookie value."""
+    url = f"{instance.rstrip('/')}/auth/login"
+    async with httpx.AsyncClient() as http:
+        resp = await http.post(url, json={"identifier": identifier, "password": password})
+        resp.raise_for_status()
+        session = resp.cookies.get("chatto_session")
+        if not session:
+            raise RuntimeError("Login succeeded but no session cookie returned")
+        return session
+
+
 class Client:
     """Async GraphQL HTTP client with cookie auth."""
 

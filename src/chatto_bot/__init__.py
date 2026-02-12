@@ -1,7 +1,7 @@
 """chatto-bot: Python bot framework for Chatto."""
 
 from .bot import Bot
-from .client import Client, GraphQLError
+from .client import Client, GraphQLError, login
 from .cog import Cog
 from .command import Command, CommandError, command
 from .config import BotConfig
@@ -29,6 +29,7 @@ __all__ = [
     "Bot",
     "Client",
     "GraphQLError",
+    "login",
     "Cog",
     "Command",
     "CommandError",

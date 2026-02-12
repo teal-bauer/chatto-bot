@@ -35,6 +35,8 @@ class BotConfig:
     extensions: list[str] = field(default_factory=list)
     log_level: str = "INFO"
     session: str = ""
+    email: str = ""
+    password: str = ""
     dms: bool = True
 
     @classmethod
@@ -46,6 +48,8 @@ class BotConfig:
         prefix: str | None = None,
         spaces: list[str] | None = None,
         session: str | None = None,
+        email: str | None = None,
+        password: str | None = None,
         dms: bool | None = None,
     ) -> BotConfig:
         """Load config from YAML file, then overlay env vars, then explicit args."""
@@ -67,6 +71,8 @@ class BotConfig:
             spaces=data.get("spaces", []),
             extensions=data.get("extensions", []),
             log_level=data.get("log_level", cls.log_level),
+            email=data.get("email", cls.email),
+            password=data.get("password", cls.password),
             dms=data.get("dms", cls.dms),
         )
 
@@ -76,6 +82,10 @@ class BotConfig:
         if env_prefix := os.environ.get("CHATTO_PREFIX"):
             config.prefix = env_prefix
         config.session = os.environ.get("CHATTO_SESSION", "")
+        if env_email := os.environ.get("CHATTO_EMAIL"):
+            config.email = env_email
+        if env_password := os.environ.get("CHATTO_PASSWORD"):
+            config.password = env_password
         if env_dms := os.environ.get("CHATTO_DMS"):
             config.dms = env_dms.lower() not in ("0", "false", "no")
 
@@ -88,6 +98,10 @@ class BotConfig:
             config.spaces = spaces
         if session is not None:
             config.session = session
+        if email is not None:
+            config.email = email
+        if password is not None:
+            config.password = password
         if dms is not None:
             config.dms = dms
 
