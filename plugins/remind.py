@@ -273,7 +273,7 @@ class Remind(Cog):
             await ctx.react("👍")
         except Exception:
             pass  # reaction is cosmetic, don't block on failure
-        await ctx.reply(
+        await ctx.reply_in_thread(
             f"Ok, I'll remind {target_str} on {date_str} at {time_str} to {message}"
         )
 
