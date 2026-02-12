@@ -239,6 +239,7 @@ class Remind(Cog):
         if target_name == "me":
             target_id = actor.id
             target_display = actor.display_name
+            target_login = actor.login
         else:
             user = await self._resolve_user(target_name, ctx.space_id)
             if not user:
@@ -246,12 +247,14 @@ class Remind(Cog):
                 return
             target_id = user["id"]
             target_display = user["displayName"]
+            target_login = user["login"]
 
         reminder = {
             "id": _short_id(),
             "creator_id": actor.id,
             "target_id": target_id,
             "target_name": target_display,
+            "target_login": target_login,
             "space_id": ctx.space_id,
             "room_id": ctx.room_id,
             "due_at": due_at.isoformat(),
@@ -348,7 +351,8 @@ class Remind(Cog):
 
         for r in due:
             try:
-                msg = f"⏰ Reminder for **{r['target_name']}**: {r['message']}"
+                login = r.get("target_login", r["target_name"])
+                msg = f"⏰ @{login} reminder: {r['message']}"
                 await self.bot.client.post_message(
                     r["space_id"], r["room_id"], msg
                 )
