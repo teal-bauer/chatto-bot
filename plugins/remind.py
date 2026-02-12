@@ -269,7 +269,10 @@ class Remind(Cog):
         date_str = due_at.strftime("%Y-%m-%d")
         time_str = due_at.strftime("%H:%M UTC")
         target_str = "you" if target_id == actor.id else f"**{target_display}**"
-        await ctx.react("⏰")
+        try:
+            await ctx.react("👍")
+        except Exception:
+            pass  # reaction is cosmetic, don't block on failure
         await ctx.reply(
             f"Ok, I'll remind {target_str} on {date_str} at {time_str} to {message}"
         )
