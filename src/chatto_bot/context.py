@@ -74,8 +74,18 @@ class Context:
         """The SpaceEvent id (used for replies and reactions)."""
         return self.event.id
 
+    @property
+    def in_thread(self) -> str | None:
+        """The thread root event ID if this event is in a thread."""
+        inner = self.event.event
+        if isinstance(inner, MessagePostedEvent) and inner.in_thread:
+            return inner.in_thread
+        return None
+
     async def reply(self, body: str, **kwargs: Any) -> dict:
-        """Reply in the same room (top-level message)."""
+        """Reply in the same room. If triggered from a thread, replies in that thread."""
+        if self.in_thread and "in_reply_to" not in kwargs:
+            kwargs["in_reply_to"] = self.in_thread
         return await self.bot.client.post_message(
             self.space_id, self.room_id, body, **kwargs
         )
