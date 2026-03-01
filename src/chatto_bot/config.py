@@ -32,6 +32,7 @@ class BotConfig:
     instance: str = "https://dev.chatto.run"
     prefix: str = "!"
     spaces: list[str] = field(default_factory=list)
+    rooms: list[str] = field(default_factory=list)  # allowlist; empty = all rooms
     extensions: list[str] = field(default_factory=list)
     log_level: str = "INFO"
     session: str = ""
@@ -69,6 +70,7 @@ class BotConfig:
             instance=data.get("instance", cls.instance),
             prefix=data.get("prefix", cls.prefix),
             spaces=data.get("spaces", []),
+            rooms=data.get("rooms", []),
             extensions=data.get("extensions", []),
             log_level=data.get("log_level", cls.log_level),
             email=data.get("email", cls.email),
@@ -81,6 +83,10 @@ class BotConfig:
             config.instance = env_instance
         if env_prefix := os.environ.get("CHATTO_PREFIX"):
             config.prefix = env_prefix
+        if env_spaces := os.environ.get("CHATTO_SPACES"):
+            config.spaces = [s.strip() for s in env_spaces.split(",") if s.strip()]
+        if env_rooms := os.environ.get("CHATTO_ROOMS"):
+            config.rooms = [r.strip() for r in env_rooms.split(",") if r.strip()]
         config.session = os.environ.get("CHATTO_SESSION", "")
         if env_email := os.environ.get("CHATTO_EMAIL"):
             config.email = env_email

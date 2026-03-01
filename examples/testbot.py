@@ -11,7 +11,6 @@ sys.path.insert(0, os.getcwd())
 from chatto_bot import Bot, Context
 
 bot = Bot(
-    spaces=["SjH0ry5SFndJrZy"],
     prefix="!",
     dms=True,
 )

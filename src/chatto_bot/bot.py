@@ -268,6 +268,12 @@ class Bot:
             self._advance_cursor(ctx_space, event.created_at)
             self._save_state()
 
+        # Skip events from rooms not in the allowlist (if configured)
+        if self.config.rooms:
+            room_id = getattr(event.event, "room_id", None)
+            if room_id and room_id not in self.config.rooms:
+                return
+
         ctx = Context(self, event)
         etype = event_name(event.event)
 
