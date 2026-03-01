@@ -90,6 +90,18 @@ class Client:
         )
         return data.get("me")
 
+    async def update_presence(self, status: str = "ONLINE") -> bool:
+        """Set the bot's presence status."""
+        data = await self.mutate(
+            """
+            mutation UpdatePresence($status: PresenceStatus!) {
+                updateMyPresence(status: $status)
+            }
+            """,
+            {"status": status},
+        )
+        return data["updateMyPresence"]
+
     async def post_message(
         self,
         space_id: str,

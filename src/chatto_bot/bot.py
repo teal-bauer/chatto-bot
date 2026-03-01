@@ -428,6 +428,13 @@ class Bot:
             "Authenticated as %s (%s)", self.user.display_name, self.user.login
         )
 
+        # Set presence to ONLINE
+        try:
+            await self.client.update_presence("ONLINE")
+            logger.info("Presence set to ONLINE")
+        except Exception:
+            logger.warning("Could not set presence (server may not support it)")
+
         # Load configured extensions
         for ext in self.config.extensions:
             try:

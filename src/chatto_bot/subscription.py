@@ -17,8 +17,8 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 SPACE_EVENTS_QUERY = """\
-subscription SpaceEvents($spaceId: ID!, $status: PresenceStatus) {
-    mySpaceEvents(spaceId: $spaceId, status: $status) {
+subscription SpaceEvents($spaceId: ID!) {
+    mySpaceEvents(spaceId: $spaceId) {
         id
         createdAt
         actorId
@@ -141,11 +141,11 @@ class SubscriptionManager:
                 "type": "subscribe",
                 "payload": {
                     "query": SPACE_EVENTS_QUERY,
-                    "variables": {"spaceId": space_id, "status": "ONLINE"},
+                    "variables": {"spaceId": space_id},
                 },
             }
             await ws.send(json.dumps(sub_msg))
-            logger.info("Subscribed to space %s (presence: ONLINE)", space_id)
+            logger.info("Subscribed to space %s", space_id)
 
             # Process events
             async for raw in ws:
