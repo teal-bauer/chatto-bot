@@ -134,6 +134,8 @@ async def help(ctx: Context, command_name: str = ""):
     else:
         lines = ["**Available commands:**"]
         for cmd in sorted(bot.commands, key=lambda c: c.name):
+            if cmd.hidden:
+                continue
             desc = cmd.help_text or "No description"
             lines.append(f"- `!{cmd.name}` — {desc}")
         await ctx.reply("\n".join(lines))

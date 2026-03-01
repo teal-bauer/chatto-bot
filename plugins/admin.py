@@ -18,7 +18,7 @@ def _is_admin(ctx: Context) -> bool:
 
 class Admin(Cog):
 
-    @command(desc="List spaces the bot is subscribed to")
+    @command(desc="List spaces the bot is subscribed to", hidden=True)
     async def spaces(self, ctx: Context):
         if not _is_admin(ctx):
             return
@@ -31,7 +31,7 @@ class Admin(Cog):
             lines.append(f"- `{sid}`")
         await ctx.reply("\n".join(lines))
 
-    @command(desc="List rooms in a space")
+    @command(desc="List rooms in a space", hidden=True)
     async def rooms(self, ctx: Context, space_id: str = ""):
         if not _is_admin(ctx):
             return
@@ -55,7 +55,7 @@ class Admin(Cog):
             lines.append(f"- `{r['id']}` — {r['name']}")
         await ctx.reply("\n".join(lines))
 
-    @command(desc="Join a room")
+    @command(desc="Join a room", hidden=True)
     async def join(self, ctx: Context, args: str = ""):
         if not _is_admin(ctx):
             return
@@ -78,7 +78,7 @@ class Admin(Cog):
         except Exception as e:
             await ctx.reply(f"Error: {e}")
 
-    @command(desc="Leave a room")
+    @command(desc="Leave a room", hidden=True)
     async def leave(self, ctx: Context, args: str = ""):
         if not _is_admin(ctx):
             return

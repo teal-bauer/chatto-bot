@@ -19,6 +19,7 @@ class Command:
     callback: Callable[..., Awaitable[None]]
     description: str = ""
     aliases: list[str] = field(default_factory=list)
+    hidden: bool = False
     cog: Any = None  # set when registered via a Cog
 
     @property
@@ -129,6 +130,7 @@ def command(
     *,
     desc: str = "",
     aliases: list[str] | None = None,
+    hidden: bool = False,
 ) -> Callable:
     """Decorator to mark a function as a bot command.
 
@@ -142,6 +144,7 @@ def command(
             callback=func,
             description=desc,
             aliases=aliases or [],
+            hidden=hidden,
         )
         # Attach the Command object so Bot/Cog can discover it
         func.__command__ = cmd  # type: ignore[attr-defined]
