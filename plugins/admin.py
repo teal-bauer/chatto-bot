@@ -45,12 +45,9 @@ class Admin(Cog):
         if not rooms:
             await ctx.reply(f"No rooms found in space `{space_id}`.")
             return
-        bot_id = self.bot.user.id if self.bot.user else ""
         lines = [f"**Rooms in `{space_id}`:**"]
         for r in rooms:
-            members = r.get("members", [])
-            is_member = any(m["user"]["id"] == bot_id for m in members)
-            mark = " [joined]" if is_member else ""
+            mark = " [joined]" if r.get("joined") else ""
             lines.append(f"- `{r['id']}` — {r['name']}{mark}")
         await ctx.reply("\n".join(lines))
 

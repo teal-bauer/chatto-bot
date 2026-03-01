@@ -282,15 +282,15 @@ class Client:
         return data.get("spaces", [])
 
     async def get_rooms(self, space_id: str) -> list[dict]:
-        """Get all visible rooms in a space with membership info."""
+        """Get all visible rooms in a space with bot's membership status."""
         data = await self.query(
             """
             query GetRooms($spaceId: ID!) {
                 space(id: $spaceId) {
-                    rooms {
-                        id name archived
-                        members { user { id } }
-                    }
+                    rooms { id name archived }
+                }
+                me {
+                    roomMemberships(spaceId: $spaceId) { room { id } }
                 }
             }
             """,
@@ -299,7 +299,14 @@ class Client:
         space = data.get("space")
         if not space:
             return []
-        return [r for r in space.get("rooms", []) if not r.get("archived")]
+        joined_ids = {
+            m["room"]["id"]
+            for m in (data.get("me") or {}).get("roomMemberships", [])
+        }
+        rooms = [r for r in space.get("rooms", []) if not r.get("archived")]
+        for r in rooms:
+            r["joined"] = r["id"] in joined_ids
+        return rooms
 
     async def search_space_members(
         self, space_id: str, search: str, limit: int = 5
