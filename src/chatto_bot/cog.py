@@ -34,7 +34,7 @@ class Cog:
                     callback=value.callback,
                     description=value.description,
                     aliases=list(value.aliases),
-                    hidden=value.hidden,
+                    admin=value.admin,
                     cog=self,
                 )
                 self.__cog_commands__.append(cmd)

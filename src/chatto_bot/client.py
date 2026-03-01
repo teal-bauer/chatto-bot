@@ -274,13 +274,23 @@ class Client:
         )
         return data["leaveSpace"]
 
+    async def get_spaces(self) -> list[dict]:
+        """Get all spaces visible to the bot."""
+        data = await self.query(
+            "{ spaces { id name viewerIsMember } }"
+        )
+        return data.get("spaces", [])
+
     async def get_rooms(self, space_id: str) -> list[dict]:
-        """Get all rooms the bot is a member of in a space."""
+        """Get all visible rooms in a space with membership info."""
         data = await self.query(
             """
             query GetRooms($spaceId: ID!) {
                 space(id: $spaceId) {
-                    rooms { id name archived }
+                    rooms {
+                        id name archived
+                        members { user { id } }
+                    }
                 }
             }
             """,

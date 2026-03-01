@@ -311,6 +311,12 @@ class Bot:
         if not cmd:
             return
 
+        # Enforce admin-only commands
+        if cmd.admin:
+            actor = ctx.actor
+            if not actor or actor.login not in self.config.admins:
+                return
+
         try:
             await cmd.invoke(ctx, args_str)
         except CommandError as e:

@@ -1,4 +1,4 @@
-"""Admin commands — DM-only, restricted to configured admin users."""
+"""Admin commands — restricted to configured admin users."""
 
 from __future__ import annotations
 
@@ -9,34 +9,29 @@ from chatto_bot import Bot, Cog, Context, command
 logger = logging.getLogger(__name__)
 
 
-def _is_admin(ctx: Context) -> bool:
-    actor = ctx.actor
-    if not actor:
-        return False
-    return actor.login in ctx.bot.config.admins
-
-
 class Admin(Cog):
 
-    @command(desc="List spaces the bot is subscribed to", hidden=True)
+    @command(desc="List available spaces", admin=True)
     async def spaces(self, ctx: Context):
-        if not _is_admin(ctx):
+        try:
+            all_spaces = await self.bot.client.get_spaces()
+        except Exception as e:
+            await ctx.reply(f"Error: {e}")
             return
-        spaces = self.bot._all_spaces
-        if not spaces:
-            await ctx.reply("Not subscribed to any spaces.")
+        if not all_spaces:
+            await ctx.reply("No spaces visible.")
             return
-        lines = ["**Subscribed spaces:**"]
-        for sid in spaces:
-            lines.append(f"- `{sid}`")
+        subscribed = set(self.bot._all_spaces)
+        lines = ["**Spaces:**"]
+        for s in all_spaces:
+            mark = " (subscribed)" if s["id"] in subscribed else ""
+            member = " [joined]" if s.get("viewerIsMember") else ""
+            lines.append(f"- `{s['id']}` — {s['name']}{member}{mark}")
         await ctx.reply("\n".join(lines))
 
-    @command(desc="List rooms in a space", hidden=True)
+    @command(desc="List rooms in a space", admin=True)
     async def rooms(self, ctx: Context, space_id: str = ""):
-        if not _is_admin(ctx):
-            return
         if not space_id:
-            # Default to first configured space
             if self.bot.config.spaces:
                 space_id = self.bot.config.spaces[0]
             else:
@@ -50,18 +45,19 @@ class Admin(Cog):
         if not rooms:
             await ctx.reply(f"No rooms found in space `{space_id}`.")
             return
+        bot_id = self.bot.user.id if self.bot.user else ""
         lines = [f"**Rooms in `{space_id}`:**"]
         for r in rooms:
-            lines.append(f"- `{r['id']}` — {r['name']}")
+            members = r.get("members", [])
+            is_member = any(m["user"]["id"] == bot_id for m in members)
+            mark = " [joined]" if is_member else ""
+            lines.append(f"- `{r['id']}` — {r['name']}{mark}")
         await ctx.reply("\n".join(lines))
 
-    @command(desc="Join a room", hidden=True)
+    @command(desc="Join a room", admin=True)
     async def join(self, ctx: Context, args: str = ""):
-        if not _is_admin(ctx):
-            return
         parts = args.split()
         if len(parts) == 1:
-            # Just room ID, use first configured space
             if not self.bot.config.spaces:
                 await ctx.reply("Usage: `!join <space_id> <room_id>`")
                 return
@@ -78,10 +74,8 @@ class Admin(Cog):
         except Exception as e:
             await ctx.reply(f"Error: {e}")
 
-    @command(desc="Leave a room", hidden=True)
+    @command(desc="Leave a room", admin=True)
     async def leave(self, ctx: Context, args: str = ""):
-        if not _is_admin(ctx):
-            return
         parts = args.split()
         if len(parts) == 1:
             if not self.bot.config.spaces:
