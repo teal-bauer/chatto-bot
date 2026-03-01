@@ -33,6 +33,7 @@ class BotConfig:
     prefix: str = "!"
     spaces: list[str] = field(default_factory=list)
     rooms: list[str] = field(default_factory=list)  # allowlist; empty = all rooms
+    admins: list[str] = field(default_factory=list)  # login names of admin users
     extensions: list[str] = field(default_factory=list)
     log_level: str = "INFO"
     session: str = ""
@@ -71,6 +72,7 @@ class BotConfig:
             prefix=data.get("prefix", cls.prefix),
             spaces=data.get("spaces", []),
             rooms=data.get("rooms", []),
+            admins=data.get("admins", []),
             extensions=data.get("extensions", []),
             log_level=data.get("log_level", cls.log_level),
             email=data.get("email", cls.email),
@@ -87,6 +89,8 @@ class BotConfig:
             config.spaces = [s.strip() for s in env_spaces.split(",") if s.strip()]
         if env_rooms := os.environ.get("CHATTO_ROOMS"):
             config.rooms = [r.strip() for r in env_rooms.split(",") if r.strip()]
+        if env_admins := os.environ.get("CHATTO_ADMINS"):
+            config.admins = [a.strip() for a in env_admins.split(",") if a.strip()]
         config.session = os.environ.get("CHATTO_SESSION", "")
         if env_email := os.environ.get("CHATTO_EMAIL"):
             config.email = env_email

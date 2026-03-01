@@ -14,7 +14,7 @@ bot = Bot(
     prefix="!",
     dms=True,
 )
-bot.config.extensions = ["plugins.remind"]
+bot.config.extensions = ["plugins.admin", "plugins.remind"]
 
 _start_time = time.monotonic()
 

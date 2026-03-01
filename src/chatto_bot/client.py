@@ -218,6 +218,50 @@ class Client:
         )
         return data["startDM"]
 
+    async def join_room(self, space_id: str, room_id: str) -> bool:
+        data = await self.mutate(
+            """
+            mutation JoinRoom($spaceId: ID!, $roomId: ID!) {
+                joinRoom(spaceId: $spaceId, roomId: $roomId)
+            }
+            """,
+            {"spaceId": space_id, "roomId": room_id},
+        )
+        return data["joinRoom"]
+
+    async def leave_room(self, space_id: str, room_id: str) -> bool:
+        data = await self.mutate(
+            """
+            mutation LeaveRoom($spaceId: ID!, $roomId: ID!) {
+                leaveRoom(spaceId: $spaceId, roomId: $roomId)
+            }
+            """,
+            {"spaceId": space_id, "roomId": room_id},
+        )
+        return data["leaveRoom"]
+
+    async def join_space(self, space_id: str) -> bool:
+        data = await self.mutate(
+            """
+            mutation JoinSpace($spaceId: ID!) {
+                joinSpace(spaceId: $spaceId)
+            }
+            """,
+            {"spaceId": space_id},
+        )
+        return data["joinSpace"]
+
+    async def leave_space(self, space_id: str) -> bool:
+        data = await self.mutate(
+            """
+            mutation LeaveSpace($spaceId: ID!) {
+                leaveSpace(spaceId: $spaceId)
+            }
+            """,
+            {"spaceId": space_id},
+        )
+        return data["leaveSpace"]
+
     async def get_rooms(self, space_id: str) -> list[dict]:
         """Get all rooms the bot is a member of in a space."""
         data = await self.query(
