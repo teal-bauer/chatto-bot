@@ -11,10 +11,10 @@ sys.path.insert(0, os.getcwd())
 from chatto_bot import Bot, Context
 
 bot = Bot(
+    config_path="chatto-bot.yaml",
     prefix="!",
     dms=True,
 )
-bot.config.extensions = ["plugins.admin", "plugins.remind"]
 
 _start_time = time.monotonic()
 

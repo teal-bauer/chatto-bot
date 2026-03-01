@@ -69,6 +69,7 @@ class Bot:
         self.user: User | None = None
         self._closed = False
         self._stop_event: asyncio.Event | None = None
+        self._presence_task: asyncio.Task | None = None
 
         # Persistent state: last processed event timestamp per space
         self._state_path = Path(".chatto-bot-state.json")
@@ -331,11 +332,18 @@ class Bot:
             try:
                 data = json.loads(self._state_path.read_text())
                 self._cursor = data.get("cursor", {})
+                # Restore dynamically added spaces
+                if saved_spaces := data.get("spaces"):
+                    for s in saved_spaces:
+                        if s not in self.config.spaces:
+                            self.config.spaces.append(s)
             except Exception:
                 self._cursor = {}
 
     def _save_state(self) -> None:
-        self._state_path.write_text(json.dumps({"cursor": self._cursor}))
+        self._state_path.write_text(
+            json.dumps({"cursor": self._cursor, "spaces": self.config.spaces})
+        )
 
     def _advance_cursor(self, space_id: str, created_at: str) -> None:
         """Update the cursor if this event is newer than what we've seen."""
@@ -462,12 +470,40 @@ class Bot:
         for space_id in all_spaces:
             self._subscriptions.start(space_id, self._dispatch)
 
+        # Start periodic presence heartbeat
+        self._presence_task = asyncio.create_task(self._presence_heartbeat())
+
+    async def _presence_heartbeat(self) -> None:
+        """Periodically refresh presence to stay online."""
+        while not self._closed:
+            await asyncio.sleep(300)  # every 5 minutes
+            try:
+                await self.client.update_presence("ONLINE")
+            except Exception:
+                logger.debug("Presence heartbeat failed")
+
+    async def subscribe_space(self, space_id: str) -> None:
+        """Subscribe to a space at runtime and persist it."""
+        if space_id not in self.config.spaces:
+            self.config.spaces.append(space_id)
+        self._subscriptions.start(space_id, self._dispatch)
+        self._save_state()
+
+    async def unsubscribe_space(self, space_id: str) -> None:
+        """Unsubscribe from a space at runtime and persist it."""
+        await self._subscriptions.stop_one(space_id)
+        if space_id in self.config.spaces:
+            self.config.spaces.remove(space_id)
+        self._save_state()
+
     async def close(self) -> None:
         """Gracefully shut down (idempotent)."""
         if self._closed:
             return
         self._closed = True
         logger.info("Shutting down...")
+        if self._presence_task:
+            self._presence_task.cancel()
         self._save_state()
         await self._subscriptions.stop()
         await self.client.close()

@@ -186,6 +186,13 @@ class SubscriptionManager:
         self._tasks[space_id] = task
         return task
 
+    async def stop_one(self, space_id: str) -> None:
+        """Stop a single subscription by space ID."""
+        task = self._tasks.pop(space_id, None)
+        if task:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+
     async def stop(self) -> None:
         """Stop all subscriptions."""
         self._running = False

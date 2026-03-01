@@ -11,8 +11,27 @@ logger = logging.getLogger(__name__)
 
 class Admin(Cog):
 
-    @command(desc="List available spaces", admin=True)
-    async def spaces(self, ctx: Context):
+    @command(desc="Manage spaces: list, join, leave", admin=True)
+    async def spaces(self, ctx: Context, args: str = ""):
+        parts = args.split()
+        sub = parts[0].lower() if parts else "list"
+
+        if sub == "list" or not parts:
+            await self._spaces_list(ctx)
+        elif sub == "join":
+            if len(parts) < 2:
+                await ctx.reply("Usage: `!spaces join <space_id>`")
+                return
+            await self._spaces_join(ctx, parts[1])
+        elif sub == "leave":
+            if len(parts) < 2:
+                await ctx.reply("Usage: `!spaces leave <space_id>`")
+                return
+            await self._spaces_leave(ctx, parts[1])
+        else:
+            await ctx.reply("Usage: `!spaces [list|join <id>|leave <id>]`")
+
+    async def _spaces_list(self, ctx: Context):
         try:
             all_spaces = await self.bot.client.get_spaces()
         except Exception as e:
@@ -29,13 +48,51 @@ class Admin(Cog):
             lines.append(f"- `{s['id']}` — {s['name']}{member}{mark}")
         await ctx.reply("\n".join(lines))
 
-    @command(desc="List rooms in a space", admin=True)
-    async def rooms(self, ctx: Context, space_id: str = ""):
+    async def _spaces_join(self, ctx: Context, space_id: str):
+        try:
+            await self.bot.client.join_space(space_id)
+            await self.bot.subscribe_space(space_id)
+            await ctx.reply(f"Joined and subscribed to space `{space_id}`.")
+        except Exception as e:
+            await ctx.reply(f"Error: {e}")
+
+    async def _spaces_leave(self, ctx: Context, space_id: str):
+        try:
+            await self.bot.client.leave_space(space_id)
+            await self.bot.unsubscribe_space(space_id)
+            await ctx.reply(f"Left and unsubscribed from space `{space_id}`.")
+        except Exception as e:
+            await ctx.reply(f"Error: {e}")
+
+    @command(desc="Manage rooms: list, join, leave", admin=True)
+    async def rooms(self, ctx: Context, args: str = ""):
+        parts = args.split()
+        sub = parts[0].lower() if parts else "list"
+
+        if sub == "list" or not parts:
+            space_id = parts[1] if len(parts) > 1 else ""
+            await self._rooms_list(ctx, space_id)
+        elif sub == "join":
+            if len(parts) < 2:
+                await ctx.reply("Usage: `!rooms join <room_id> [space_id]`")
+                return
+            space_id = parts[2] if len(parts) > 2 else ""
+            await self._rooms_join(ctx, parts[1], space_id)
+        elif sub == "leave":
+            if len(parts) < 2:
+                await ctx.reply("Usage: `!rooms leave <room_id> [space_id]`")
+                return
+            space_id = parts[2] if len(parts) > 2 else ""
+            await self._rooms_leave(ctx, parts[1], space_id)
+        else:
+            await ctx.reply("Usage: `!rooms [list [space_id]|join <id>|leave <id>]`")
+
+    async def _rooms_list(self, ctx: Context, space_id: str):
         if not space_id:
             if self.bot.config.spaces:
                 space_id = self.bot.config.spaces[0]
             else:
-                await ctx.reply("Usage: `!rooms <space_id>`")
+                await ctx.reply("Usage: `!rooms list <space_id>`")
                 return
         try:
             rooms = await self.bot.client.get_rooms(space_id)
@@ -51,40 +108,26 @@ class Admin(Cog):
             lines.append(f"- `{r['id']}` — {r['name']}{mark}")
         await ctx.reply("\n".join(lines))
 
-    @command(desc="Join a room", admin=True)
-    async def join(self, ctx: Context, args: str = ""):
-        parts = args.split()
-        if len(parts) == 1:
-            if not self.bot.config.spaces:
-                await ctx.reply("Usage: `!join <space_id> <room_id>`")
+    async def _rooms_join(self, ctx: Context, room_id: str, space_id: str):
+        if not space_id:
+            if self.bot.config.spaces:
+                space_id = self.bot.config.spaces[0]
+            else:
+                await ctx.reply("Usage: `!rooms join <room_id> <space_id>`")
                 return
-            space_id = self.bot.config.spaces[0]
-            room_id = parts[0]
-        elif len(parts) == 2:
-            space_id, room_id = parts
-        else:
-            await ctx.reply("Usage: `!join [space_id] <room_id>`")
-            return
         try:
             await self.bot.client.join_room(space_id, room_id)
             await ctx.reply(f"Joined room `{room_id}` in space `{space_id}`.")
         except Exception as e:
             await ctx.reply(f"Error: {e}")
 
-    @command(desc="Leave a room", admin=True)
-    async def leave(self, ctx: Context, args: str = ""):
-        parts = args.split()
-        if len(parts) == 1:
-            if not self.bot.config.spaces:
-                await ctx.reply("Usage: `!leave <space_id> <room_id>`")
+    async def _rooms_leave(self, ctx: Context, room_id: str, space_id: str):
+        if not space_id:
+            if self.bot.config.spaces:
+                space_id = self.bot.config.spaces[0]
+            else:
+                await ctx.reply("Usage: `!rooms leave <room_id> <space_id>`")
                 return
-            space_id = self.bot.config.spaces[0]
-            room_id = parts[0]
-        elif len(parts) == 2:
-            space_id, room_id = parts
-        else:
-            await ctx.reply("Usage: `!leave [space_id] <room_id>`")
-            return
         try:
             await self.bot.client.leave_room(space_id, room_id)
             await ctx.reply(f"Left room `{room_id}` in space `{space_id}`.")
