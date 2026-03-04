@@ -1,8 +1,8 @@
 """Version detection with fallback chain.
 
 1. _version.py (written by hatch-vcs at build/install time)
-2. git describe (works in dev checkout)
-3. VERSION file (written at deploy time)
+2. VERSION file (written at deploy time)
+3. git describe (works in dev checkout)
 """
 
 from __future__ import annotations
@@ -20,7 +20,14 @@ def _get_version() -> str:
     except ImportError:
         pass
 
-    # 2. Live git describe (dev checkout)
+    # 2. VERSION file (deploy artifact — takes priority over stale .git)
+    for path in (Path("VERSION"), Path(__file__).parent.parent.parent / "VERSION"):
+        try:
+            return path.read_text().strip()
+        except FileNotFoundError:
+            pass
+
+    # 3. Live git describe (dev checkout)
     try:
         return subprocess.check_output(
             ["git", "describe", "--tags", "--dirty", "--always"],
@@ -29,13 +36,6 @@ def _get_version() -> str:
         ).strip()
     except (subprocess.CalledProcessError, FileNotFoundError):
         pass
-
-    # 3. VERSION file (raw deploy)
-    for path in (Path("VERSION"), Path(__file__).parent.parent.parent / "VERSION"):
-        try:
-            return path.read_text().strip()
-        except FileNotFoundError:
-            pass
 
     return "unknown"
 
