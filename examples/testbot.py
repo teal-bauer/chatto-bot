@@ -137,12 +137,19 @@ async def help(ctx: Context, command_name: str = ""):
             lines.append(f"Aliases: {', '.join(cmd.aliases)}")
         await ctx.reply("\n".join(lines))
     else:
+        is_admin = ctx.actor and ctx.actor.login in bot.config.admins
         lines = ["**Available commands:**"]
+        admin_lines = []
         for cmd in sorted(bot.commands, key=lambda c: c.name):
-            if cmd.admin:
-                continue
             desc = cmd.help_text or "No description"
-            lines.append(f"- `!{cmd.name}` — {desc}")
+            if cmd.admin:
+                admin_lines.append(f"- `!{cmd.name}` — {desc}")
+            else:
+                lines.append(f"- `!{cmd.name}` — {desc}")
+        if is_admin and admin_lines:
+            lines.append("")
+            lines.append("**Admin commands:**")
+            lines.extend(admin_lines)
         await ctx.reply("\n".join(lines))
 
 
