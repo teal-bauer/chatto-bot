@@ -261,12 +261,16 @@ class Bot:
 
     # --- Event dispatching ---
 
-    async def _dispatch(self, event: SpaceEvent) -> None:
+    async def _dispatch(self, event: SpaceEvent, *, replay: bool = False) -> None:
         """Dispatch a SpaceEvent through middleware and to handlers."""
         # Advance cursor so we don't re-process on next restart
         if ctx_space := (getattr(event.event, "space_id", None) or ""):
             self._advance_cursor(ctx_space, event.created_at)
             self._save_state()
+
+        # During replay, only advance the cursor — don't re-process
+        if replay:
+            return
 
         # Skip events from rooms not in the allowlist (if configured)
         if self.config.rooms:
@@ -393,7 +397,7 @@ class Bot:
 
                 try:
                     event = parse_space_event(event_data)
-                    await self._dispatch(event)
+                    await self._dispatch(event, replay=True)
                     replayed += 1
                 except Exception:
                     logger.debug("Skipping unprocessable replay event")
