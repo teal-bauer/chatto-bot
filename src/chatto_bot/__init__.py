@@ -1,5 +1,6 @@
 """chatto-bot: Python bot framework for Chatto."""
 
+from .version import __version__
 from .bot import Bot
 from .client import Client, GraphQLError, login
 from .cog import Cog

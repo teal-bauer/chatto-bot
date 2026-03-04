@@ -3,6 +3,7 @@
 __pycache__/
 *.pyc
 *.egg-info/
+src/chatto_bot/_version.py
 dist/
 build/
 .pytest_cache/

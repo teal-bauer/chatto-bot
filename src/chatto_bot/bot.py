@@ -69,7 +69,6 @@ class Bot:
         self.user: User | None = None
         self._closed = False
         self._stop_event: asyncio.Event | None = None
-        self._presence_task: asyncio.Task | None = None
 
         # Persistent state: last processed event timestamp per space
         self._state_path = Path(".chatto-bot-state.json")
@@ -470,17 +469,8 @@ class Bot:
         for space_id in all_spaces:
             self._subscriptions.start(space_id, self._dispatch)
 
-        # Start periodic presence heartbeat
-        self._presence_task = asyncio.create_task(self._presence_heartbeat())
-
-    async def _presence_heartbeat(self) -> None:
-        """Periodically refresh presence to stay online."""
-        while not self._closed:
-            await asyncio.sleep(300)  # every 5 minutes
-            try:
-                await self.client.update_presence("ONLINE")
-            except Exception:
-                logger.debug("Presence heartbeat failed")
+        # Start instance subscription (keeps presence online)
+        self._subscriptions.start_instance()
 
     async def subscribe_space(self, space_id: str) -> None:
         """Subscribe to a space at runtime and persist it."""
@@ -502,8 +492,6 @@ class Bot:
             return
         self._closed = True
         logger.info("Shutting down...")
-        if self._presence_task:
-            self._presence_task.cancel()
         self._save_state()
         await self._subscriptions.stop()
         await self.client.close()
@@ -563,6 +551,7 @@ class Bot:
             await self._replay_missed(space_id)
         for space_id in all_spaces:
             self._subscriptions.start(space_id, self._dispatch)
+        self._subscriptions.start_instance()
 
         logger.info("Reload complete")
 

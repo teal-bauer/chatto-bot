@@ -8,7 +8,7 @@ import time
 # Ensure CWD is on the path so plugins/ can be imported as extensions
 sys.path.insert(0, os.getcwd())
 
-from chatto_bot import Bot, Context
+from chatto_bot import Bot, Context, __version__
 
 bot = Bot(
     config_path="chatto-bot.yaml",
@@ -110,6 +110,11 @@ async def react(ctx: Context, emoji: str = ""):
         await ctx.reply("Usage: !react <emoji>")
         return
     await ctx.react(emoji)
+
+
+@bot.command(desc="Show bot version")
+async def version(ctx: Context):
+    await ctx.reply(f"chatto-bot `{__version__}`")
 
 
 @bot.command(desc="Show available commands")

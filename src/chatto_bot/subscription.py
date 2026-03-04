@@ -64,6 +64,15 @@ subscription SpaceEvents($spaceId: ID!) {
 }"""
 
 
+INSTANCE_EVENTS_QUERY = """\
+subscription InstanceEvents {
+    myInstanceEvents {
+        id createdAt actorId
+        event { __typename }
+    }
+}"""
+
+
 class SubscriptionManager:
     """Manages WebSocket subscriptions to Chatto spaces.
 
@@ -173,6 +182,65 @@ class SubscriptionManager:
                 elif msg_type == "ping":
                     await ws.send(json.dumps({"type": "pong"}))
 
+    async def _run_instance_subscription(self) -> None:
+        """Subscribe to myInstanceEvents to keep presence alive."""
+        headers = {
+            "Cookie": self.config.cookie_header,
+            "Origin": self.config.instance,
+        }
+
+        logger.info("Connecting instance subscription (presence)")
+
+        async with websockets.connect(
+            self.config.ws_url,
+            subprotocols=["graphql-transport-ws"],
+            additional_headers=headers,
+        ) as ws:
+            await ws.send(json.dumps({"type": "connection_init"}))
+            ack = json.loads(await ws.recv())
+            if ack.get("type") != "connection_ack":
+                raise RuntimeError(f"Expected connection_ack, got: {ack}")
+
+            await ws.send(json.dumps({
+                "id": "instance",
+                "type": "subscribe",
+                "payload": {"query": INSTANCE_EVENTS_QUERY},
+            }))
+            logger.info("Instance subscription active (presence online)")
+
+            async for raw in ws:
+                if not self._running:
+                    break
+                msg = json.loads(raw)
+                if msg.get("type") == "ping":
+                    await ws.send(json.dumps({"type": "pong"}))
+                elif msg.get("type") == "complete":
+                    break
+
+    async def _instance_subscribe_loop(self) -> None:
+        """Keep instance subscription alive with auto-reconnect."""
+        self._running = True
+        backoff = 1.0
+
+        while self._running:
+            try:
+                await self._run_instance_subscription()
+            except asyncio.CancelledError:
+                logger.info("Instance subscription cancelled")
+                break
+            except Exception:
+                if not self._running:
+                    break
+                logger.exception(
+                    "Instance subscription error, reconnecting in %.1fs", backoff
+                )
+                await asyncio.sleep(backoff)
+                backoff = min(backoff * 2, 60.0)
+            else:
+                if self._running:
+                    await asyncio.sleep(backoff)
+                    backoff = min(backoff * 2, 60.0)
+
     def start(
         self,
         space_id: str,
@@ -185,6 +253,16 @@ class SubscriptionManager:
         )
         self._tasks[space_id] = task
         return task
+
+    def start_instance(self) -> None:
+        """Start the instance subscription for presence."""
+        if "_instance" not in self._tasks:
+            self._running = True
+            task = asyncio.create_task(
+                self._instance_subscribe_loop(),
+                name="sub-instance",
+            )
+            self._tasks["_instance"] = task
 
     async def stop_one(self, space_id: str) -> None:
         """Stop a single subscription by space ID."""
