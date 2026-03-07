@@ -270,7 +270,7 @@ class Remind(Cog):
         time_str = due_at.strftime("%H:%M UTC")
         target_str = "you" if target_id == actor.id else f"**{target_display}**"
         try:
-            await ctx.react("👍")
+            await ctx.react("thumbsup")
         except Exception:
             pass  # reaction is cosmetic, don't block on failure
         await ctx.reply_in_thread(

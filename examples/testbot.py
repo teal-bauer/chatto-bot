@@ -168,16 +168,16 @@ async def dm_greeting(ctx: Context):
 async def react_to_sentiment(ctx: Context):
     body = (ctx.body or "").lower().strip().rstrip("!.")
     if body == "adequate bot" and ctx.actor and ctx.actor.login.lower() == "hmans":
-        await ctx.react("🎉")
+        await ctx.react("tada")
     elif body in ("good bot", "nice bot", "thanks bot", "thank you bot"):
-        await ctx.react(random.choice(["❤", "👍"]))
+        await ctx.react(random.choice(["heart", "thumbsup"]))
     elif body in ("bad bot", "boo", "booo", "boooo"):
-        await ctx.react("😢")
+        await ctx.react("cry")
     else:
         raw = (ctx.body or "").lower()
         mentions_bot = bot.user and f"@{bot.user.login.lower()}" in raw
         if mentions_bot and any(w in raw for w in ("no", "wrong", "bad", "boo")):
-            await ctx.react("😢")
+            await ctx.react("cry")
 
 
 @bot.middleware
