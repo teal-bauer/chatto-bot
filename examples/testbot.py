@@ -170,7 +170,7 @@ async def react_to_sentiment(ctx: Context):
     if body == "adequate bot" and ctx.actor and ctx.actor.login.lower() == "hmans":
         await ctx.react("🎉")
     elif body in ("good bot", "nice bot", "thanks bot", "thank you bot"):
-        await ctx.react(random.choice(["❤️", "👍"]))
+        await ctx.react(random.choice(["❤", "👍"]))
     elif body in ("bad bot", "boo", "booo", "boooo"):
         await ctx.react("😢")
     else:
