@@ -6,6 +6,7 @@ import asyncio
 import importlib
 import json
 import logging
+import os
 import signal
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
@@ -73,6 +74,8 @@ class Bot:
         # Persistent state: last processed event timestamp per space
         self._state_path = Path(".chatto-bot-state.json")
         self._cursor: dict[str, str] = {}  # space_id -> last created_at
+        self._state_dirty = False
+        self._state_flush_task: asyncio.Task | None = None
         self._load_state()
 
     @property
@@ -271,7 +274,7 @@ class Bot:
             if cursor_ts and event.created_at <= cursor_ts:
                 return
             self._advance_cursor(ctx_space, event.created_at)
-            self._save_state()
+            self._mark_state_dirty()
 
         # Skip events from rooms not in the allowlist (if configured)
         if self.config.rooms:
@@ -348,10 +351,29 @@ class Bot:
             except Exception:
                 self._cursor = {}
 
+    def _mark_state_dirty(self) -> None:
+        """Mark state as needing a flush. Actual write happens periodically."""
+        self._state_dirty = True
+        if self._state_flush_task is None or self._state_flush_task.done():
+            try:
+                self._state_flush_task = asyncio.create_task(self._flush_state_later())
+            except RuntimeError:
+                # No event loop — fall back to sync write
+                self._save_state()
+
+    async def _flush_state_later(self) -> None:
+        """Debounced state flush — waits a bit then writes once."""
+        await asyncio.sleep(5.0)
+        if self._state_dirty:
+            await asyncio.get_event_loop().run_in_executor(None, self._save_state)
+
     def _save_state(self) -> None:
-        self._state_path.write_text(
+        self._state_dirty = False
+        tmp = self._state_path.with_suffix(".tmp")
+        tmp.write_text(
             json.dumps({"cursor": self._cursor, "spaces": self.config.spaces})
         )
+        os.replace(tmp, self._state_path)
 
     def _advance_cursor(self, space_id: str, created_at: str) -> None:
         """Update the cursor if this event is newer than what we've seen."""
