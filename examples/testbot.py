@@ -125,7 +125,7 @@ async def help(ctx: Context, command_name: str = ""):
             await ctx.reply(f"Unknown command: `{command_name}`")
             return
         sig = cmd.signature
-        usage = f"`!{cmd.name}"
+        usage = f"`{bot.config.prefix}{cmd.name}"
         if sig:
             usage += f" {sig}"
         usage += "`"
@@ -143,9 +143,9 @@ async def help(ctx: Context, command_name: str = ""):
         for cmd in sorted(bot.commands, key=lambda c: c.name):
             desc = cmd.help_text or "No description"
             if cmd.admin:
-                admin_lines.append(f"- `!{cmd.name}` — {desc}")
+                admin_lines.append(f"- `{bot.config.prefix}{cmd.name}` — {desc}")
             else:
-                lines.append(f"- `!{cmd.name}` — {desc}")
+                lines.append(f"- `{bot.config.prefix}{cmd.name}` — {desc}")
         if is_admin and admin_lines:
             lines.append("")
             lines.append("**Admin commands:**")
@@ -178,13 +178,6 @@ async def react_to_sentiment(ctx: Context):
         mentions_bot = bot.user and f"@{bot.user.login.lower()}" in raw
         if mentions_bot and any(w in raw for w in ("no", "wrong", "bad", "boo")):
             await ctx.react("cry")
-
-
-@bot.middleware
-async def ignore_self(ctx, next):
-    """Don't process the bot's own messages."""
-    if ctx.actor and bot.user and ctx.actor.id != bot.user.id:
-        await next()
 
 
 if __name__ == "__main__":
