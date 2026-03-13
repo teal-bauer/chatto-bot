@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-REMINDERS_PATH = Path(".chatto-bot-reminders.json")
+REMINDERS_PATH = Path(__file__).resolve().parent.parent / ".chatto-bot-reminders.json"
 CHECK_INTERVAL = 30  # seconds
 
 
@@ -42,7 +42,10 @@ def _resolve_time(spec: str) -> tuple[int, int]:
     if spec in _NAMED_TIMES:
         return _NAMED_TIMES[spec]
     h, m = spec.split(":")
-    return int(h), int(m)
+    hour, minute = int(h), int(m)
+    if not (0 <= hour <= 23 and 0 <= minute <= 59):
+        raise ValueError(f"Invalid time: {spec} (expected 0-23:0-59)")
+    return hour, minute
 
 
 def _parse_remind_args(text: str) -> tuple[str, datetime | None, str]:
@@ -73,18 +76,15 @@ def _parse_remind_args(text: str) -> tuple[str, datetime | None, str]:
     target = target_raw.lstrip("@") if target_raw.lower() != "me" else "me"
     rest = text[target_match.end() :].strip()
 
-    # If we consumed up to 'to', rest is just everything after that prefix match
-    # Re-parse from rest for time specs
-    # But first, if target_match ended at 'to ', message is rest and no time
-    if text[target_match.start(0) : target_match.end(0)].rstrip().endswith("to"):
-        # No time spec, "me to <msg>" — default to next morning
+    now = datetime.now(timezone.utc)
+
+    # "me to <msg>" with no time spec — default to next morning
+    if rest and not re.match(r"(?:on|at|in)\s", rest, re.IGNORECASE) and not re.match(rf"(?:{_NAMED_TIMES_RE})\s", rest, re.IGNORECASE):
         h, m = _NAMED_TIMES["morning"]
         due = now.replace(hour=h, minute=m, second=0, microsecond=0)
         if due <= now:
             due += timedelta(days=1)
         return target, due, rest
-
-    now = datetime.now(timezone.utc)
     due_date = None
     due_time = None
 
@@ -179,7 +179,9 @@ class Remind(Cog):
         return []
 
     def _save(self, reminders: list[dict]) -> None:
-        REMINDERS_PATH.write_text(json.dumps(reminders, indent=2))
+        tmp = REMINDERS_PATH.with_suffix(".tmp")
+        tmp.write_text(json.dumps(reminders, indent=2))
+        os.replace(tmp, REMINDERS_PATH)
 
     # --- User resolution ---
 
