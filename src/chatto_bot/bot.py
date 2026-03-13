@@ -279,6 +279,10 @@ class Bot:
             if room_id and room_id not in self.config.rooms:
                 return
 
+        # Ignore the bot's own events to prevent infinite loops
+        if self.user and event.actor_id == self.user.id:
+            return
+
         ctx = Context(self, event)
         etype = event_name(event.event)
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 from dataclasses import dataclass, field
 
 
@@ -223,6 +224,10 @@ def _parse_inner_event(data: dict) -> EventType:
             value = [_parse_reaction(r) for r in value]
 
         kwargs[snake_key] = value
+
+    # Filter to known fields so new server-side fields don't crash us
+    known = {f.name for f in dataclasses.fields(cls)}
+    kwargs = {k: v for k, v in kwargs.items() if k in known}
 
     return cls(**kwargs)
 

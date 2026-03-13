@@ -31,7 +31,7 @@ class EventHandler:
                 return False
             if key == "space" and ctx.space_id != value:
                 return False
-            if key == "actor" and ctx.actor and ctx.actor.id != value:
+            if key == "actor" and (not ctx.actor or ctx.actor.id != value):
                 return False
         return True
 
