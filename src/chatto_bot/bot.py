@@ -94,6 +94,7 @@ class Bot:
         *,
         desc: str = "",
         aliases: list[str] | None = None,
+        admin: bool = False,
     ) -> Callable:
         """Decorator to register a command on this bot."""
 
@@ -103,6 +104,7 @@ class Bot:
                 callback=func,
                 description=desc,
                 aliases=aliases or [],
+                admin=admin,
             )
             self.add_command(cmd)
             return cmd
@@ -251,16 +253,34 @@ class Bot:
         logger.info("Unloaded extension: %s", module_name)
 
     async def reload_extension(self, module_name: str) -> None:
-        """Reload an extension (unload + reimport + load)."""
+        """Reload an extension (unload + reimport + load).
+
+        If the new version fails to load, the old version is restored.
+        """
+        import sys
+
+        old_module = self._extensions.get(module_name)
+        old_sys_module = sys.modules.get(module_name)
+
         await self.unload_extension(module_name)
 
         # Force reimport
-        import sys
-
         if module_name in sys.modules:
             del sys.modules[module_name]
 
-        await self.load_extension(module_name)
+        try:
+            await self.load_extension(module_name)
+        except Exception:
+            # Restore the old module so the extension isn't lost
+            logger.exception("Failed to reload %s, restoring previous version", module_name)
+            if old_sys_module is not None:
+                sys.modules[module_name] = old_sys_module
+            if old_module is not None:
+                setup = getattr(old_module, "setup", None)
+                if setup:
+                    await setup(self)
+                self._extensions[module_name] = old_module
+            raise
 
     # --- Event dispatching ---
 
@@ -525,11 +545,12 @@ class Bot:
         logger.info("Shutting down...")
         self._save_state()
         await self._subscriptions.stop()
-        await self.client.close()
 
-        # Unload cogs
+        # Unload cogs before closing client so cog_unload() can still make API calls
         for name in list(self._cogs.keys()):
             await self.remove_cog(name)
+
+        await self.client.close()
 
         # Unblock _runner if it's waiting
         if self._stop_event:
