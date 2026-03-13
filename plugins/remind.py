@@ -84,7 +84,9 @@ def _parse_remind_args(text: str) -> tuple[str, datetime | None, str]:
         due = now.replace(hour=h, minute=m, second=0, microsecond=0)
         if due <= now:
             due += timedelta(days=1)
-        return target, due, rest
+        # Strip leading "to " if present
+        msg = re.sub(r"^to\s+", "", rest, flags=re.IGNORECASE)
+        return target, due, msg
     due_date = None
     due_time = None
 
@@ -207,7 +209,7 @@ class Remind(Cog):
 
     @command(desc="Set a reminder", aliases=["rm"])
     async def remind(self, ctx: Context, args: str = ""):
-        """Usage: !remind me/\@user [on YYYY-MM-DD] [at HH:MM] [in Nm/h/d] to <message>"""
+        r"""Usage: !remind me/\@user [on YYYY-MM-DD] [at HH:MM] [in Nm/h/d] to <message>"""
         if not args:
             await ctx.reply(
                 "Usage: `!remind me in 5m to check the build`\n"

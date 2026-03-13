@@ -24,3 +24,7 @@ version-file = "src/chatto_bot/_version.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/chatto_bot"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
