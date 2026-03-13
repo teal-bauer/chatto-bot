@@ -82,7 +82,6 @@ class SubscriptionManager:
     def __init__(self, config: BotConfig) -> None:
         self.config = config
         self._tasks: dict[str, asyncio.Task] = {}
-        self._running = False
 
     async def subscribe(
         self,
@@ -90,18 +89,15 @@ class SubscriptionManager:
         callback: Callable[[SpaceEvent], Awaitable[None]],
     ) -> None:
         """Subscribe to a space's events with auto-reconnect."""
-        self._running = True
         backoff = 1.0
 
-        while self._running:
+        while True:
             try:
                 await self._run_subscription(space_id, callback)
             except asyncio.CancelledError:
                 logger.info("Subscription cancelled for space %s", space_id)
-                break
+                return
             except Exception:
-                if not self._running:
-                    break
                 logger.exception(
                     "Subscription error for space %s, reconnecting in %.1fs",
                     space_id,
@@ -111,14 +107,13 @@ class SubscriptionManager:
                 backoff = min(backoff * 2, 60.0)
             else:
                 # Clean disconnect (shouldn't happen normally)
-                if self._running:
-                    logger.warning(
-                        "Subscription ended for space %s, reconnecting in %.1fs",
-                        space_id,
-                        backoff,
-                    )
-                    await asyncio.sleep(backoff)
-                    backoff = min(backoff * 2, 60.0)
+                logger.warning(
+                    "Subscription ended for space %s, reconnecting in %.1fs",
+                    space_id,
+                    backoff,
+                )
+                await asyncio.sleep(backoff)
+                backoff = min(backoff * 2, 60.0)
 
     async def _run_subscription(
         self,
@@ -158,9 +153,6 @@ class SubscriptionManager:
 
             # Process events
             async for raw in ws:
-                if not self._running:
-                    break
-
                 msg = json.loads(raw)
                 msg_type = msg.get("type")
 
@@ -209,8 +201,6 @@ class SubscriptionManager:
             logger.info("Instance subscription active (presence online)")
 
             async for raw in ws:
-                if not self._running:
-                    break
                 msg = json.loads(raw)
                 if msg.get("type") == "ping":
                     await ws.send(json.dumps({"type": "pong"}))
@@ -219,27 +209,23 @@ class SubscriptionManager:
 
     async def _instance_subscribe_loop(self) -> None:
         """Keep instance subscription alive with auto-reconnect."""
-        self._running = True
         backoff = 1.0
 
-        while self._running:
+        while True:
             try:
                 await self._run_instance_subscription()
             except asyncio.CancelledError:
                 logger.info("Instance subscription cancelled")
-                break
+                return
             except Exception:
-                if not self._running:
-                    break
                 logger.exception(
                     "Instance subscription error, reconnecting in %.1fs", backoff
                 )
                 await asyncio.sleep(backoff)
                 backoff = min(backoff * 2, 60.0)
             else:
-                if self._running:
-                    await asyncio.sleep(backoff)
-                    backoff = min(backoff * 2, 60.0)
+                await asyncio.sleep(backoff)
+                backoff = min(backoff * 2, 60.0)
 
     def start(
         self,
@@ -257,7 +243,6 @@ class SubscriptionManager:
     def start_instance(self) -> None:
         """Start the instance subscription for presence."""
         if "_instance" not in self._tasks:
-            self._running = True
             task = asyncio.create_task(
                 self._instance_subscribe_loop(),
                 name="sub-instance",
@@ -273,7 +258,6 @@ class SubscriptionManager:
 
     async def stop(self) -> None:
         """Stop all subscriptions."""
-        self._running = False
         for task in self._tasks.values():
             task.cancel()
         if self._tasks:
