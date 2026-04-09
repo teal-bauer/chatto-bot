@@ -94,11 +94,11 @@ class Client:
         """Set the bot's presence status."""
         data = await self.mutate(
             """
-            mutation UpdatePresence($status: PresenceStatus!) {
-                updateMyPresence(status: $status)
+            mutation UpdatePresence($input: UpdateMyPresenceInput!) {
+                updateMyPresence(input: $input)
             }
             """,
-            {"status": status},
+            {"input": {"status": status}},
         )
         return data["updateMyPresence"]
 
@@ -144,38 +144,29 @@ class Client:
         self,
         space_id: str,
         room_id: str,
-        message_body_id: str,
+        event_id: str,
         body: str,
     ) -> bool:
         data = await self.mutate(
             """
-            mutation EditMessage($spaceId: ID!, $roomId: ID!, $messageBodyId: ID!, $body: String!) {
-                editMessage(spaceId: $spaceId, roomId: $roomId, messageBodyId: $messageBodyId, body: $body)
+            mutation EditMessage($input: EditMessageInput!) {
+                editMessage(input: $input)
             }
             """,
-            {
-                "spaceId": space_id,
-                "roomId": room_id,
-                "messageBodyId": message_body_id,
-                "body": body,
-            },
+            {"input": {"spaceId": space_id, "roomId": room_id, "eventId": event_id, "body": body}},
         )
         return data["editMessage"]
 
     async def delete_message(
-        self, space_id: str, room_id: str, message_body_id: str
+        self, space_id: str, room_id: str, event_id: str
     ) -> bool:
         data = await self.mutate(
             """
-            mutation DeleteMessage($spaceId: ID!, $roomId: ID!, $messageBodyId: ID!) {
-                deleteMessage(spaceId: $spaceId, roomId: $roomId, messageBodyId: $messageBodyId)
+            mutation DeleteMessage($input: DeleteMessageInput!) {
+                deleteMessage(input: $input)
             }
             """,
-            {
-                "spaceId": space_id,
-                "roomId": room_id,
-                "messageBodyId": message_body_id,
-            },
+            {"input": {"spaceId": space_id, "roomId": room_id, "eventId": event_id}},
         )
         return data["deleteMessage"]
 
@@ -184,16 +175,11 @@ class Client:
     ) -> bool:
         data = await self.mutate(
             """
-            mutation AddReaction($spaceId: ID!, $roomId: ID!, $messageEventId: ID!, $emoji: String!) {
-                addReaction(spaceId: $spaceId, roomId: $roomId, messageEventId: $messageEventId, emoji: $emoji)
+            mutation AddReaction($input: AddReactionInput!) {
+                addReaction(input: $input)
             }
             """,
-            {
-                "spaceId": space_id,
-                "roomId": room_id,
-                "messageEventId": message_event_id,
-                "emoji": emoji,
-            },
+            {"input": {"spaceId": space_id, "roomId": room_id, "messageEventId": message_event_id, "emoji": emoji}},
         )
         return data["addReaction"]
 
@@ -202,16 +188,11 @@ class Client:
     ) -> bool:
         data = await self.mutate(
             """
-            mutation RemoveReaction($spaceId: ID!, $roomId: ID!, $messageEventId: ID!, $emoji: String!) {
-                removeReaction(spaceId: $spaceId, roomId: $roomId, messageEventId: $messageEventId, emoji: $emoji)
+            mutation RemoveReaction($input: RemoveReactionInput!) {
+                removeReaction(input: $input)
             }
             """,
-            {
-                "spaceId": space_id,
-                "roomId": room_id,
-                "messageEventId": message_event_id,
-                "emoji": emoji,
-            },
+            {"input": {"spaceId": space_id, "roomId": room_id, "messageEventId": message_event_id, "emoji": emoji}},
         )
         return data["removeReaction"]
 
@@ -219,58 +200,58 @@ class Client:
         """Start or get an existing DM room."""
         data = await self.mutate(
             """
-            mutation StartDM($participantIds: [ID!]!) {
-                startDM(participantIds: $participantIds) {
+            mutation StartDM($input: StartDMInput!) {
+                startDM(input: $input) {
                     id name spaceId
-                    members { user { id login displayName } }
+                    members { id login displayName }
                 }
             }
             """,
-            {"participantIds": participant_ids},
+            {"input": {"participantIds": participant_ids}},
         )
         return data["startDM"]
 
     async def join_room(self, space_id: str, room_id: str) -> bool:
         data = await self.mutate(
             """
-            mutation JoinRoom($spaceId: ID!, $roomId: ID!) {
-                joinRoom(spaceId: $spaceId, roomId: $roomId)
+            mutation JoinRoom($input: JoinRoomInput!) {
+                joinRoom(input: $input)
             }
             """,
-            {"spaceId": space_id, "roomId": room_id},
+            {"input": {"spaceId": space_id, "roomId": room_id}},
         )
         return data["joinRoom"]
 
     async def leave_room(self, space_id: str, room_id: str) -> bool:
         data = await self.mutate(
             """
-            mutation LeaveRoom($spaceId: ID!, $roomId: ID!) {
-                leaveRoom(spaceId: $spaceId, roomId: $roomId)
+            mutation LeaveRoom($input: LeaveRoomInput!) {
+                leaveRoom(input: $input)
             }
             """,
-            {"spaceId": space_id, "roomId": room_id},
+            {"input": {"spaceId": space_id, "roomId": room_id}},
         )
         return data["leaveRoom"]
 
     async def join_space(self, space_id: str) -> bool:
         data = await self.mutate(
             """
-            mutation JoinSpace($spaceId: ID!) {
-                joinSpace(spaceId: $spaceId)
+            mutation JoinSpace($input: JoinSpaceInput!) {
+                joinSpace(input: $input)
             }
             """,
-            {"spaceId": space_id},
+            {"input": {"spaceId": space_id}},
         )
         return data["joinSpace"]
 
     async def leave_space(self, space_id: str) -> bool:
         data = await self.mutate(
             """
-            mutation LeaveSpace($spaceId: ID!) {
-                leaveSpace(spaceId: $spaceId)
+            mutation LeaveSpace($input: LeaveSpaceInput!) {
+                leaveSpace(input: $input)
             }
             """,
-            {"spaceId": space_id},
+            {"input": {"spaceId": space_id}},
         )
         return data["leaveSpace"]
 
@@ -290,7 +271,7 @@ class Client:
                     rooms { id name archived }
                 }
                 me {
-                    roomMemberships(spaceId: $spaceId) { room { id } }
+                    rooms(spaceId: $spaceId) { id }
                 }
             }
             """,
@@ -300,8 +281,8 @@ class Client:
         if not space:
             return []
         joined_ids = {
-            m["room"]["id"]
-            for m in (data.get("me") or {}).get("roomMemberships", [])
+            r["id"]
+            for r in (data.get("me") or {}).get("rooms", [])
         }
         rooms = [r for r in space.get("rooms", []) if not r.get("archived")]
         for r in rooms:

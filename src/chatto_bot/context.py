@@ -123,7 +123,7 @@ class Context:
         if not self.message_body_id:
             return False
         return await self.bot.client.edit_message(
-            self.space_id, self.room_id, self.message_body_id, body
+            self.space_id, self.room_id, self.event_id, body
         )
 
     async def delete(self) -> bool:
@@ -131,5 +131,5 @@ class Context:
         if not self.message_body_id:
             return False
         return await self.bot.client.delete_message(
-            self.space_id, self.room_id, self.message_body_id
+            self.space_id, self.room_id, self.event_id
         )
