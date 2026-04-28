@@ -137,3 +137,21 @@ class Context:
         return await self.bot.client.delete_message(
             self.space_id, self.room_id, self.event_id
         )
+
+    async def fetch_message(self, event_id: str | None = None) -> dict | None:
+        """Fetch the current state of a message.
+
+        Useful inside a ``message_updated`` handler, since the update event
+        carries only the event id — call ``await ctx.fetch_message()`` to
+        retrieve the new body, attachments, reactions, etc.
+
+        If ``event_id`` is omitted, falls back to the inner event's
+        ``message_event_id`` (set on update/delete events) or the wrapper's
+        own id.
+        """
+        if event_id is None:
+            inner = self.event.event
+            event_id = getattr(inner, "message_event_id", None) or self.event.id
+        if not event_id:
+            return None
+        return await self.bot.client.get_event(self.space_id, self.room_id, event_id)

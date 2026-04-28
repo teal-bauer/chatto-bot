@@ -5,67 +5,73 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from typing import TYPE_CHECKING, Callable, Awaitable
+from typing import TYPE_CHECKING, Awaitable, Callable
 
 import websockets
 
-from .types import SpaceEvent, parse_space_event
+from ._queries import SPACE_EVENT_FRAGMENT
+from .types import SpaceEvent, parse_instance_event, parse_space_event
 
 if TYPE_CHECKING:
     from .config import BotConfig
 
 logger = logging.getLogger(__name__)
 
-SPACE_EVENTS_QUERY = """\
+SPACE_EVENTS_QUERY = SPACE_EVENT_FRAGMENT + """
 subscription SpaceEvents($spaceId: ID!) {
-    mySpaceEvents(spaceId: $spaceId) {
-        id
-        createdAt
-        actorId
-        actor { id login displayName avatarUrl presenceStatus }
-        event {
-            __typename
-            ... on MessagePostedEvent {
-                roomId body
-                attachments { id filename contentType width height url }
-                inReplyTo inThread
-                reactions { emoji count users { id login displayName } hasReacted }
-                updatedAt replyCount lastReplyAt
-            }
-            ... on MessageUpdatedEvent {
-                roomId messageEventId
-            }
-            ... on MessageDeletedEvent {
-                roomId messageEventId
-            }
-            ... on UserJoinedRoomEvent {
-                spaceId roomId
-            }
-            ... on UserLeftRoomEvent {
-                spaceId roomId
-            }
-            ... on ReactionAddedEvent {
-                spaceId roomId messageEventId emoji
-            }
-            ... on ReactionRemovedEvent {
-                spaceId roomId messageEventId emoji
-            }
-            ... on UserTypingEvent {
-                spaceId roomId threadRootEventId
-            }
-            ... on PresenceChangedEvent {
-                status
-            }
-        }
-    }
-}"""
+    mySpaceEvents(spaceId: $spaceId) { ...SpaceEventFields }
+}
+"""
 
 
 INSTANCE_EVENTS_QUERY = """\
 subscription InstanceEvents {
     myInstanceEvents {
-        id createdAt actorId
-        event { __typename }
+        actorId
+        event {
+            __typename
+            ... on InstanceConfigUpdatedEvent {
+                instanceName motd welcomeMessage
+            }
+            ... on SpaceCreatedEvent { spaceId }
+            ... on SpaceUpdatedEvent {
+                spaceId name description logoUrl bannerUrl
+            }
+            ... on SpaceDeletedEvent { spaceId }
+            ... on UserJoinedSpaceEvent { spaceId }
+            ... on UserLeftSpaceEvent { spaceId }
+            ... on UserProfileUpdatedEvent {
+                userId displayName avatarUrl login
+            }
+            ... on InstanceUserPreferencesUpdatedEvent {
+                timezone timeFormat
+            }
+            ... on NotificationLevelChangedEvent {
+                spaceId roomId level effectiveLevel
+            }
+            ... on MentionNotificationEvent {
+                spaceId roomId
+                space { name }
+                room { name }
+                actor { id displayName }
+            }
+            ... on NewDirectMessageNotificationEvent {
+                roomId
+                sender { id displayName avatarUrl }
+                conversationName
+            }
+            ... on NotificationCreatedEvent {
+                notificationId spaceId roomId eventId inReplyToId
+            }
+            ... on NotificationDismissedEvent { notificationId }
+            ... on NewMessageInSpaceEvent { spaceId roomId }
+            ... on RoomMarkedAsReadEvent { spaceId roomId }
+            ... on ThreadFollowChangedEvent {
+                spaceId roomId threadRootEventId isFollowing
+            }
+            ... on RoomLayoutUpdatedEvent { spaceId }
+            ... on SessionTerminatedEvent { reason }
+        }
     }
 }"""
 
@@ -103,7 +109,6 @@ class SubscriptionManager:
                 await asyncio.sleep(backoff)
                 backoff = min(backoff * 2, 60.0)
             else:
-                # Clean disconnect (shouldn't happen normally)
                 logger.warning(
                     "Subscription ended for space %s, reconnecting in %.1fs",
                     space_id,
@@ -130,13 +135,11 @@ class SubscriptionManager:
             subprotocols=["graphql-transport-ws"],
             additional_headers=headers,
         ) as ws:
-            # Connection init
             await ws.send(json.dumps({"type": "connection_init"}))
             ack = json.loads(await ws.recv())
             if ack.get("type") != "connection_ack":
                 raise RuntimeError(f"Expected connection_ack, got: {ack}")
 
-            # Subscribe
             sub_msg = {
                 "id": "1",
                 "type": "subscribe",
@@ -148,7 +151,6 @@ class SubscriptionManager:
             await ws.send(json.dumps(sub_msg))
             logger.info("Subscribed to space %s", space_id)
 
-            # Process events
             async for raw in ws:
                 msg = json.loads(raw)
                 msg_type = msg.get("type")
@@ -171,14 +173,21 @@ class SubscriptionManager:
                 elif msg_type == "ping":
                     await ws.send(json.dumps({"type": "pong"}))
 
-    async def _run_instance_subscription(self) -> None:
-        """Subscribe to myInstanceEvents to keep presence alive."""
+    async def _run_instance_subscription(
+        self,
+        callback: Callable[[SpaceEvent], Awaitable[None]] | None,
+    ) -> None:
+        """Subscribe to myInstanceEvents and dispatch events through callback.
+
+        If ``callback`` is None the subscription still runs (for presence
+        keepalive) but events are discarded.
+        """
         headers = {
             "Cookie": self.config.cookie_header,
             "Origin": self.config.instance,
         }
 
-        logger.info("Connecting instance subscription (presence)")
+        logger.info("Connecting instance subscription")
 
         async with websockets.connect(
             self.config.ws_url,
@@ -199,18 +208,36 @@ class SubscriptionManager:
 
             async for raw in ws:
                 msg = json.loads(raw)
-                if msg.get("type") == "ping":
-                    await ws.send(json.dumps({"type": "pong"}))
-                elif msg.get("type") == "complete":
+                msg_type = msg.get("type")
+
+                if msg_type == "next" and callback is not None:
+                    try:
+                        event_data = msg["payload"]["data"]["myInstanceEvents"]
+                        event = parse_instance_event(event_data)
+                        await callback(event)
+                    except Exception:
+                        logger.exception("Error processing instance event")
+
+                elif msg_type == "error":
+                    logger.error("Instance subscription error: %s", msg.get("payload"))
+
+                elif msg_type == "complete":
+                    logger.info("Instance subscription completed by server")
                     break
 
-    async def _instance_subscribe_loop(self) -> None:
+                elif msg_type == "ping":
+                    await ws.send(json.dumps({"type": "pong"}))
+
+    async def _instance_subscribe_loop(
+        self,
+        callback: Callable[[SpaceEvent], Awaitable[None]] | None,
+    ) -> None:
         """Keep instance subscription alive with auto-reconnect."""
         backoff = 1.0
 
         while True:
             try:
-                await self._run_instance_subscription()
+                await self._run_instance_subscription(callback)
             except asyncio.CancelledError:
                 logger.info("Instance subscription cancelled")
                 return
@@ -237,11 +264,18 @@ class SubscriptionManager:
         self._tasks[space_id] = task
         return task
 
-    def start_instance(self) -> None:
-        """Start the instance subscription for presence."""
+    def start_instance(
+        self,
+        callback: Callable[[SpaceEvent], Awaitable[None]] | None = None,
+    ) -> None:
+        """Start the instance subscription.
+
+        If a ``callback`` is provided, instance events are dispatched through
+        it; otherwise the subscription runs purely for presence.
+        """
         if "_instance" not in self._tasks:
             task = asyncio.create_task(
-                self._instance_subscribe_loop(),
+                self._instance_subscribe_loop(callback),
                 name="sub-instance",
             )
             self._tasks["_instance"] = task

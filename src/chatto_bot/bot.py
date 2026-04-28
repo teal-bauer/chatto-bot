@@ -288,8 +288,9 @@ class Bot:
         """Dispatch a SpaceEvent through middleware and to handlers."""
         ctx_space = event.space_id or getattr(event.event, "space_id", None) or ""
 
-        # Skip events we've already processed (from replay or subscription reconnect)
-        if ctx_space:
+        # Cursor dedup applies to per-space events only (instance events have
+        # no created_at and aren't part of a replay-able stream).
+        if ctx_space and event.created_at:
             cursor_ts = self._cursor.get(ctx_space, "")
             if cursor_ts and event.created_at <= cursor_ts:
                 return
@@ -417,13 +418,14 @@ class Bot:
         replayed = 0
         for room in rooms:
             try:
-                events = await self.client.get_room_events(
+                page = await self.client.get_room_events(
                     space_id, room["id"], limit=50
                 )
             except Exception:
                 logger.debug("Skipping replay for room %s: no access", room["id"])
                 continue
 
+            events = page.get("events", []) if isinstance(page, dict) else page
             # Events come newest-first; reverse for chronological processing
             for event_data in reversed(events):
                 created_at = event_data.get("createdAt", "")
@@ -520,8 +522,9 @@ class Bot:
         for space_id in all_spaces:
             self._subscriptions.start(space_id, self._dispatch)
 
-        # Start instance subscription (keeps presence online)
-        self._subscriptions.start_instance()
+        # Start instance subscription — dispatches instance events as hooks
+        # (and keeps presence online as a side effect)
+        self._subscriptions.start_instance(self._dispatch)
 
     async def subscribe_space(self, space_id: str) -> None:
         """Subscribe to a space at runtime and persist it."""
@@ -603,7 +606,7 @@ class Bot:
             await self._replay_missed(space_id)
         for space_id in all_spaces:
             self._subscriptions.start(space_id, self._dispatch)
-        self._subscriptions.start_instance()
+        self._subscriptions.start_instance(self._dispatch)
 
         logger.info("Reload complete")
 

@@ -7,6 +7,8 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 
+from ._queries import SPACE_EVENT_FRAGMENT
+
 if TYPE_CHECKING:
     from .config import BotConfig
 
@@ -122,18 +124,9 @@ class Client:
             variables["input"]["inReplyTo"] = in_reply_to
 
         data = await self.mutate(
-            """
+            SPACE_EVENT_FRAGMENT + """
             mutation PostMessage($input: PostMessageInput!) {
-                postMessage(input: $input) {
-                    id createdAt actorId
-                    actor { id login displayName }
-                    event {
-                        ... on MessagePostedEvent {
-                            roomId body
-                            inReplyTo inThread
-                        }
-                    }
-                }
+                postMessage(input: $input) { ...SpaceEventFields }
             }
             """,
             variables,
@@ -315,37 +308,56 @@ class Client:
         space_id: str,
         room_id: str,
         limit: int = 50,
-    ) -> list[dict]:
-        """Fetch recent events from a room."""
+        *,
+        before: str | None = None,
+        after: str | None = None,
+    ) -> dict:
+        """Fetch recent events from a room.
+
+        Returns a connection dict ``{"events": [...], "hasOlder": bool,
+        "hasNewer": bool}``. Use ``before`` / ``after`` event IDs for paging.
+        """
+        variables: dict[str, Any] = {
+            "spaceId": space_id,
+            "roomId": room_id,
+            "limit": limit,
+        }
+        params = "$spaceId: ID!, $roomId: ID!, $limit: Int"
+        args = "spaceId: $spaceId, roomId: $roomId, limit: $limit"
+        if before is not None:
+            params += ", $before: ID"
+            args += ", before: $before"
+            variables["before"] = before
+        if after is not None:
+            params += ", $after: ID"
+            args += ", after: $after"
+            variables["after"] = after
+
         data = await self.query(
-            """
-            query RoomEvents($spaceId: ID!, $roomId: ID!, $limit: Int) {
-                roomEvents(spaceId: $spaceId, roomId: $roomId, limit: $limit) {
-                    events {
-                        id createdAt actorId
-                        actor { id login displayName avatarUrl presenceStatus }
-                        event {
-                            __typename
-                            ... on MessagePostedEvent {
-                                roomId body
-                                attachments { id filename contentType width height url }
-                                inReplyTo inThread
-                                reactions { emoji count users { id login displayName } hasReacted }
-                                updatedAt replyCount lastReplyAt
-                            }
-                            ... on MessageUpdatedEvent { roomId messageEventId }
-                            ... on MessageDeletedEvent { roomId messageEventId }
-                            ... on ReactionAddedEvent { spaceId roomId messageEventId emoji }
-                            ... on ReactionRemovedEvent { spaceId roomId messageEventId emoji }
-                            ... on UserJoinedRoomEvent { spaceId roomId }
-                            ... on UserLeftRoomEvent { spaceId roomId }
-                        }
-                    }
-                    hasOlder
-                    hasNewer
+            SPACE_EVENT_FRAGMENT + f"""
+            query RoomEvents({params}) {{
+                roomEvents({args}) {{
+                    events {{ ...SpaceEventFields }}
+                    hasOlder hasNewer
+                }}
+            }}
+            """,
+            variables,
+        )
+        return data.get("roomEvents") or {"events": [], "hasOlder": False, "hasNewer": False}
+
+    async def get_event(
+        self, space_id: str, room_id: str, event_id: str
+    ) -> dict | None:
+        """Fetch a single SpaceEvent by id (e.g. to refetch after MessageUpdated)."""
+        data = await self.query(
+            SPACE_EVENT_FRAGMENT + """
+            query GetEvent($spaceId: ID!, $roomId: ID!, $eventId: ID!) {
+                roomEventByEventId(spaceId: $spaceId, roomId: $roomId, eventId: $eventId) {
+                    ...SpaceEventFields
                 }
             }
             """,
-            {"spaceId": space_id, "roomId": room_id, "limit": limit},
+            {"spaceId": space_id, "roomId": room_id, "eventId": event_id},
         )
-        return (data.get("roomEvents") or {}).get("events", [])
+        return data.get("roomEventByEventId")

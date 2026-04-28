@@ -4,9 +4,13 @@ import pytest
 from chatto_bot.types import (
     MessagePostedEvent,
     ReactionAddedEvent,
+    RoomArchivedEvent,
+    SpaceCreatedEvent,
     SpaceEvent,
+    UnknownEvent,
     User,
     event_name,
+    parse_instance_event,
     parse_space_event,
     _parse_inner_event,
 )
@@ -24,13 +28,24 @@ class TestParseInnerEvent:
         assert event.room_id == "R1"
         assert event.body == "hello"
 
-    def test_unknown_typename_raises(self):
-        with pytest.raises(ValueError, match="Unknown event type"):
-            _parse_inner_event({"__typename": "FutureEvent"})
+    def test_unknown_typename_returns_placeholder(self):
+        event = _parse_inner_event(
+            {"__typename": "FutureEvent", "newField": "value"}
+        )
+        assert isinstance(event, UnknownEvent)
+        assert event.typename == "FutureEvent"
+        assert event.raw["newField"] == "value"
+        assert event_name(event) == "unknown"
 
     def test_missing_typename_raises(self):
         with pytest.raises(ValueError, match="missing __typename"):
             _parse_inner_event({"spaceId": "S1"})
+
+    def test_room_archived_event(self):
+        event = _parse_inner_event({"__typename": "RoomArchivedEvent", "roomId": "R1"})
+        assert isinstance(event, RoomArchivedEvent)
+        assert event.room_id == "R1"
+        assert event_name(event) == "room_archived"
 
     def test_unknown_fields_are_ignored(self):
         """New server-side fields should not crash parsing."""
@@ -106,6 +121,24 @@ class TestParseSpaceEvent:
         }
         se = parse_space_event(data, space_id="S1")
         assert se.actor is None
+
+
+class TestParseInstanceEvent:
+    def test_space_created(self):
+        wrapper = parse_instance_event(
+            {
+                "actorId": "U1",
+                "event": {"__typename": "SpaceCreatedEvent", "spaceId": "S1"},
+            }
+        )
+        assert isinstance(wrapper, SpaceEvent)
+        assert wrapper.actor_id == "U1"
+        assert wrapper.id == ""
+        assert wrapper.created_at == ""
+        assert wrapper.space_id == ""
+        assert wrapper.actor is None
+        assert isinstance(wrapper.event, SpaceCreatedEvent)
+        assert wrapper.event.space_id == "S1"
 
 
 class TestEventName:
