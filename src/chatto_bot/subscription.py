@@ -23,23 +23,20 @@ subscription SpaceEvents($spaceId: ID!) {
         createdAt
         actorId
         actor { id login displayName avatarUrl presenceStatus }
-        sequenceId
         event {
             __typename
             ... on MessagePostedEvent {
-                spaceId roomId body messageBodyId
-                attachments { id filename contentType size width height url }
+                roomId body
+                attachments { id filename contentType width height url }
                 inReplyTo inThread
                 reactions { emoji count users { id login displayName } hasReacted }
                 updatedAt replyCount lastReplyAt
             }
             ... on MessageUpdatedEvent {
-                spaceId roomId body messageBodyId
-                attachments { id filename contentType size width height url }
-                reactions { emoji count users { id login displayName } hasReacted }
+                roomId messageEventId
             }
             ... on MessageDeletedEvent {
-                spaceId roomId messageBodyId
+                roomId messageEventId
             }
             ... on UserJoinedRoomEvent {
                 spaceId roomId
@@ -159,7 +156,7 @@ class SubscriptionManager:
                 if msg_type == "next":
                     try:
                         event_data = msg["payload"]["data"]["mySpaceEvents"]
-                        event = parse_space_event(event_data)
+                        event = parse_space_event(event_data, space_id=space_id)
                         await callback(event)
                     except Exception:
                         logger.exception("Error processing event")

@@ -125,11 +125,11 @@ class Client:
             """
             mutation PostMessage($input: PostMessageInput!) {
                 postMessage(input: $input) {
-                    id sequenceId createdAt actorId
+                    id createdAt actorId
                     actor { id login displayName }
                     event {
                         ... on MessagePostedEvent {
-                            spaceId roomId body messageBodyId
+                            roomId body
                             inReplyTo inThread
                         }
                     }
@@ -321,23 +321,19 @@ class Client:
             """
             query RoomEvents($spaceId: ID!, $roomId: ID!, $limit: Int) {
                 roomEvents(spaceId: $spaceId, roomId: $roomId, limit: $limit) {
-                    id createdAt actorId sequenceId
+                    id createdAt actorId
                     actor { id login displayName avatarUrl presenceStatus }
                     event {
                         __typename
                         ... on MessagePostedEvent {
-                            spaceId roomId body messageBodyId
-                            attachments { id filename contentType size width height url }
+                            roomId body
+                            attachments { id filename contentType width height url }
                             inReplyTo inThread
                             reactions { emoji count users { id login displayName } hasReacted }
                             updatedAt replyCount lastReplyAt
                         }
-                        ... on MessageUpdatedEvent {
-                            spaceId roomId body messageBodyId
-                            attachments { id filename contentType size width height url }
-                            reactions { emoji count users { id login displayName } hasReacted }
-                        }
-                        ... on MessageDeletedEvent { spaceId roomId messageBodyId }
+                        ... on MessageUpdatedEvent { roomId messageEventId }
+                        ... on MessageDeletedEvent { roomId messageEventId }
                         ... on ReactionAddedEvent { spaceId roomId messageEventId emoji }
                         ... on ReactionRemovedEvent { spaceId roomId messageEventId emoji }
                         ... on UserJoinedRoomEvent { spaceId roomId }

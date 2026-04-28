@@ -85,11 +85,9 @@ def make_event(
         id=event_id,
         created_at="2026-01-01T00:00:00Z",
         actor_id=actor_id,
-        sequence_id="1",
+        space_id=space_id,
         event=MessagePostedEvent(
-            space_id=space_id,
             room_id=room_id,
-            message_body_id=f"{actor_id}.{event_id}",
             body=body,
             in_thread=in_thread,
         ),

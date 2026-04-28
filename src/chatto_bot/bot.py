@@ -286,7 +286,7 @@ class Bot:
 
     async def _dispatch(self, event: SpaceEvent) -> None:
         """Dispatch a SpaceEvent through middleware and to handlers."""
-        ctx_space = getattr(event.event, "space_id", None) or ""
+        ctx_space = event.space_id or getattr(event.event, "space_id", None) or ""
 
         # Skip events we've already processed (from replay or subscription reconnect)
         if ctx_space:

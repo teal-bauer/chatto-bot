@@ -34,7 +34,14 @@ class Context:
 
     @property
     def space_id(self) -> str:
-        """Extract space_id from the inner event (most event types have it)."""
+        """The space this event was dispatched from.
+
+        Reads from the outer SpaceEvent (set by the subscription, since
+        the API no longer includes spaceId on most inner event types).
+        Falls back to inner.space_id for events that still expose it.
+        """
+        if self.event.space_id:
+            return self.event.space_id
         inner = self.event.event
         if hasattr(inner, "space_id"):
             return inner.space_id
@@ -63,10 +70,7 @@ class Context:
 
     @property
     def message_body_id(self) -> str | None:
-        """Message body ID for editing/deleting."""
-        inner = self.event.event
-        if hasattr(inner, "message_body_id"):
-            return inner.message_body_id
+        """Removed from the API; kept as a no-op for backward compatibility."""
         return None
 
     @property
@@ -120,7 +124,7 @@ class Context:
 
     async def edit(self, body: str) -> bool:
         """Edit the bot's own message (only works if the event is the bot's)."""
-        if not self.message_body_id:
+        if not isinstance(self.event.event, MessagePostedEvent):
             return False
         return await self.bot.client.edit_message(
             self.space_id, self.room_id, self.event_id, body
@@ -128,7 +132,7 @@ class Context:
 
     async def delete(self) -> bool:
         """Delete the bot's own message."""
-        if not self.message_body_id:
+        if not isinstance(self.event.event, MessagePostedEvent):
             return False
         return await self.bot.client.delete_message(
             self.space_id, self.room_id, self.event_id

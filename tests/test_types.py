@@ -16,14 +16,12 @@ class TestParseInnerEvent:
     def test_message_posted(self):
         data = {
             "__typename": "MessagePostedEvent",
-            "spaceId": "S1",
             "roomId": "R1",
-            "messageBodyId": "U1.E1",
             "body": "hello",
         }
         event = _parse_inner_event(data)
         assert isinstance(event, MessagePostedEvent)
-        assert event.space_id == "S1"
+        assert event.room_id == "R1"
         assert event.body == "hello"
 
     def test_unknown_typename_raises(self):
@@ -53,16 +51,13 @@ class TestParseInnerEvent:
     def test_attachments_parsed(self):
         data = {
             "__typename": "MessagePostedEvent",
-            "spaceId": "S1",
             "roomId": "R1",
-            "messageBodyId": "U1.E1",
             "body": "check this",
             "attachments": [
                 {
                     "id": "A1",
                     "filename": "test.png",
                     "contentType": "image/png",
-                    "size": 1024,
                     "width": 100,
                     "height": 100,
                     "url": "https://example.com/test.png",
@@ -80,7 +75,6 @@ class TestParseSpaceEvent:
             "id": "E1",
             "createdAt": "2026-01-01T00:00:00Z",
             "actorId": "U1",
-            "sequenceId": "1",
             "actor": {
                 "id": "U1",
                 "login": "alice",
@@ -88,14 +82,13 @@ class TestParseSpaceEvent:
             },
             "event": {
                 "__typename": "MessagePostedEvent",
-                "spaceId": "S1",
                 "roomId": "R1",
-                "messageBodyId": "U1.E1",
                 "body": "hi",
             },
         }
-        se = parse_space_event(data)
+        se = parse_space_event(data, space_id="S1")
         assert isinstance(se, SpaceEvent)
+        assert se.space_id == "S1"
         assert se.actor.login == "alice"
         assert se.event.body == "hi"
 
@@ -104,23 +97,20 @@ class TestParseSpaceEvent:
             "id": "E1",
             "createdAt": "2026-01-01T00:00:00Z",
             "actorId": "system",
-            "sequenceId": "1",
             "actor": None,
             "event": {
                 "__typename": "MessagePostedEvent",
-                "spaceId": "S1",
                 "roomId": "R1",
-                "messageBodyId": "sys.E1",
                 "body": "system message",
             },
         }
-        se = parse_space_event(data)
+        se = parse_space_event(data, space_id="S1")
         assert se.actor is None
 
 
 class TestEventName:
     def test_known_types(self):
-        event = MessagePostedEvent(space_id="S1", room_id="R1", message_body_id="X")
+        event = MessagePostedEvent(room_id="R1")
         assert event_name(event) == "message_posted"
 
         event = ReactionAddedEvent(

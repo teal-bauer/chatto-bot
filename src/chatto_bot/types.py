@@ -20,7 +20,6 @@ class Attachment:
     id: str
     filename: str
     content_type: str
-    size: int
     width: int = 0
     height: int = 0
     url: str = ""
@@ -39,9 +38,7 @@ class Reaction:
 
 @dataclass
 class MessagePostedEvent:
-    space_id: str
     room_id: str
-    message_body_id: str
     body: str | None = None
     attachments: list[Attachment] = field(default_factory=list)
     in_reply_to: str | None = None
@@ -54,19 +51,14 @@ class MessagePostedEvent:
 
 @dataclass
 class MessageUpdatedEvent:
-    space_id: str
     room_id: str
-    message_body_id: str
-    body: str | None = None
-    attachments: list[Attachment] = field(default_factory=list)
-    reactions: list[Reaction] = field(default_factory=list)
+    message_event_id: str
 
 
 @dataclass
 class MessageDeletedEvent:
-    space_id: str
     room_id: str
-    message_body_id: str
+    message_event_id: str
 
 
 @dataclass
@@ -127,7 +119,7 @@ class SpaceEvent:
     id: str
     created_at: str
     actor_id: str
-    sequence_id: str
+    space_id: str
     event: EventType
     actor: User | None = None
 
@@ -184,7 +176,6 @@ def _parse_attachment(data: dict) -> Attachment:
         id=data["id"],
         filename=data["filename"],
         content_type=data["contentType"],
-        size=data["size"],
         width=data.get("width", 0),
         height=data.get("height", 0),
         url=data.get("url", ""),
@@ -232,8 +223,12 @@ def _parse_inner_event(data: dict) -> EventType:
     return cls(**kwargs)
 
 
-def parse_space_event(data: dict) -> SpaceEvent:
-    """Parse a full SpaceEvent from GraphQL subscription JSON."""
+def parse_space_event(data: dict, space_id: str = "") -> SpaceEvent:
+    """Parse a full SpaceEvent from GraphQL subscription JSON.
+
+    space_id is supplied by the caller (the subscription), since the API
+    no longer includes it on the SpaceEvent or its inner events.
+    """
     event_data = data.get("event", {})
     actor_data = data.get("actor")
 
@@ -241,7 +236,7 @@ def parse_space_event(data: dict) -> SpaceEvent:
         id=data["id"],
         created_at=data["createdAt"],
         actor_id=data["actorId"],
-        sequence_id=data["sequenceId"],
+        space_id=space_id,
         event=_parse_inner_event(event_data),
         actor=_parse_user(actor_data) if actor_data else None,
     )
