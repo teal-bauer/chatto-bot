@@ -443,7 +443,7 @@ class Bot:
                     continue
 
                 try:
-                    event = parse_space_event(event_data)
+                    event = parse_space_event(event_data, space_id=space_id)
                     await self._dispatch(event)
                     replayed += 1
                 except Exception:

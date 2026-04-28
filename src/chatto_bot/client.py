@@ -321,27 +321,31 @@ class Client:
             """
             query RoomEvents($spaceId: ID!, $roomId: ID!, $limit: Int) {
                 roomEvents(spaceId: $spaceId, roomId: $roomId, limit: $limit) {
-                    id createdAt actorId
-                    actor { id login displayName avatarUrl presenceStatus }
-                    event {
-                        __typename
-                        ... on MessagePostedEvent {
-                            roomId body
-                            attachments { id filename contentType width height url }
-                            inReplyTo inThread
-                            reactions { emoji count users { id login displayName } hasReacted }
-                            updatedAt replyCount lastReplyAt
+                    events {
+                        id createdAt actorId
+                        actor { id login displayName avatarUrl presenceStatus }
+                        event {
+                            __typename
+                            ... on MessagePostedEvent {
+                                roomId body
+                                attachments { id filename contentType width height url }
+                                inReplyTo inThread
+                                reactions { emoji count users { id login displayName } hasReacted }
+                                updatedAt replyCount lastReplyAt
+                            }
+                            ... on MessageUpdatedEvent { roomId messageEventId }
+                            ... on MessageDeletedEvent { roomId messageEventId }
+                            ... on ReactionAddedEvent { spaceId roomId messageEventId emoji }
+                            ... on ReactionRemovedEvent { spaceId roomId messageEventId emoji }
+                            ... on UserJoinedRoomEvent { spaceId roomId }
+                            ... on UserLeftRoomEvent { spaceId roomId }
                         }
-                        ... on MessageUpdatedEvent { roomId messageEventId }
-                        ... on MessageDeletedEvent { roomId messageEventId }
-                        ... on ReactionAddedEvent { spaceId roomId messageEventId emoji }
-                        ... on ReactionRemovedEvent { spaceId roomId messageEventId emoji }
-                        ... on UserJoinedRoomEvent { spaceId roomId }
-                        ... on UserLeftRoomEvent { spaceId roomId }
                     }
+                    hasOlder
+                    hasNewer
                 }
             }
             """,
             {"spaceId": space_id, "roomId": room_id, "limit": limit},
         )
-        return data.get("roomEvents", [])
+        return (data.get("roomEvents") or {}).get("events", [])
