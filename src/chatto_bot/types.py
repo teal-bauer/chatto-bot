@@ -565,6 +565,18 @@ def _parse_link_preview(data: dict) -> LinkPreview:
     )
 
 
+# GraphQL response keys we receive aliased (the web client aliases these to
+# work around field-merge type conflicts in the union). Map back to canonical
+# names before parsing so the dataclass fields stay clean.
+_FIELD_ALIASES: dict[str, str] = {
+    "nlcSpaceId": "spaceId",
+    "nlcRoomId": "roomId",
+    "tfcSpaceId": "spaceId",
+    "tfcRoomId": "roomId",
+    "rluSpaceId": "spaceId",
+}
+
+
 def _parse_inner_event(data: dict) -> EventType:
     """Parse a SpaceEvent's inner event union from GraphQL JSON."""
     typename = data.get("__typename")
@@ -582,7 +594,8 @@ def _parse_inner_event(data: dict) -> EventType:
     for key, value in data.items():
         if key == "__typename":
             continue
-        snake_key = _camel_to_snake(key)
+        canonical = _FIELD_ALIASES.get(key, key)
+        snake_key = _camel_to_snake(canonical)
         if snake_key not in known:
             continue  # unknown field, drop quietly so future API fields don't crash
 

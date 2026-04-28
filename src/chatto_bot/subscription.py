@@ -47,7 +47,9 @@ subscription InstanceEvents {
                 timezone timeFormat
             }
             ... on NotificationLevelChangedEvent {
-                spaceId roomId level effectiveLevel
+                nlcSpaceId: spaceId
+                nlcRoomId: roomId
+                level effectiveLevel
             }
             ... on MentionNotificationEvent {
                 spaceId roomId
@@ -67,9 +69,11 @@ subscription InstanceEvents {
             ... on NewMessageInSpaceEvent { spaceId roomId }
             ... on RoomMarkedAsReadEvent { spaceId roomId }
             ... on ThreadFollowChangedEvent {
-                spaceId roomId threadRootEventId isFollowing
+                tfcSpaceId: spaceId
+                tfcRoomId: roomId
+                threadRootEventId isFollowing
             }
-            ... on RoomLayoutUpdatedEvent { spaceId }
+            ... on RoomLayoutUpdatedEvent { rluSpaceId: spaceId }
             ... on SessionTerminatedEvent { reason }
         }
     }
