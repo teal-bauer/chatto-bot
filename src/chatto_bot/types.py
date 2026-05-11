@@ -201,10 +201,11 @@ class CallParticipantLeftEvent:
 
 
 @dataclass
-class InstanceConfigUpdatedEvent:
-    instance_name: str | None = None
+class ServerConfigUpdatedEvent:
+    server_name: str | None = None
     motd: str | None = None
     welcome_message: str | None = None
+    blocked_usernames: str | None = None
 
 
 @dataclass
@@ -246,7 +247,7 @@ class UserProfileUpdatedEvent:
 
 
 @dataclass
-class InstanceUserPreferencesUpdatedEvent:
+class ServerUserPreferencesUpdatedEvent:
     timezone: str | None = None
     time_format: str | None = None
 
@@ -352,14 +353,14 @@ RoomInnerEvent = (
 )
 
 InstanceInnerEvent = (
-    InstanceConfigUpdatedEvent
+    ServerConfigUpdatedEvent
     | UserCreatedEvent
     | UserDeletedEvent
     | ServerUpdatedEvent
     | UserJoinedServerEvent
     | UserLeftServerEvent
     | UserProfileUpdatedEvent
-    | InstanceUserPreferencesUpdatedEvent
+    | ServerUserPreferencesUpdatedEvent
     | NotificationLevelChangedEvent
     | MentionNotificationEvent
     | NewDirectMessageNotificationEvent
@@ -399,14 +400,14 @@ _GRAPHQL_TO_EVENT: dict[str, type] = {
     "CallParticipantJoinedEvent": CallParticipantJoinedEvent,
     "CallParticipantLeftEvent": CallParticipantLeftEvent,
     # Instance
-    "InstanceConfigUpdatedEvent": InstanceConfigUpdatedEvent,
+    "ServerConfigUpdatedEvent": ServerConfigUpdatedEvent,
     "UserCreatedEvent": UserCreatedEvent,
     "UserDeletedEvent": UserDeletedEvent,
     "ServerUpdatedEvent": ServerUpdatedEvent,
     "UserJoinedServerEvent": UserJoinedServerEvent,
     "UserLeftServerEvent": UserLeftServerEvent,
     "UserProfileUpdatedEvent": UserProfileUpdatedEvent,
-    "InstanceUserPreferencesUpdatedEvent": InstanceUserPreferencesUpdatedEvent,
+    "ServerUserPreferencesUpdatedEvent": ServerUserPreferencesUpdatedEvent,
     "NotificationLevelChangedEvent": NotificationLevelChangedEvent,
     "MentionNotificationEvent": MentionNotificationEvent,
     "NewDirectMessageNotificationEvent": NewDirectMessageNotificationEvent,
@@ -441,14 +442,14 @@ EVENT_NAME_TO_TYPE: dict[str, type] = {
     "call_participant_joined": CallParticipantJoinedEvent,
     "call_participant_left": CallParticipantLeftEvent,
     # Instance
-    "instance_config_updated": InstanceConfigUpdatedEvent,
+    "server_config_updated": ServerConfigUpdatedEvent,
     "user_created": UserCreatedEvent,
     "user_deleted": UserDeletedEvent,
     "server_updated": ServerUpdatedEvent,
     "user_joined_server": UserJoinedServerEvent,
     "user_left_server": UserLeftServerEvent,
     "user_profile_updated": UserProfileUpdatedEvent,
-    "instance_user_preferences_updated": InstanceUserPreferencesUpdatedEvent,
+    "server_user_preferences_updated": ServerUserPreferencesUpdatedEvent,
     "notification_level_changed": NotificationLevelChangedEvent,
     "mention_notification": MentionNotificationEvent,
     "new_direct_message_notification": NewDirectMessageNotificationEvent,

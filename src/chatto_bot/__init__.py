@@ -46,8 +46,8 @@ from .types import (
     UserTypingEvent,
     VideoProcessingCompletedEvent,
     # Instance inner events
-    InstanceConfigUpdatedEvent,
-    InstanceUserPreferencesUpdatedEvent,
+    ServerConfigUpdatedEvent,
+    ServerUserPreferencesUpdatedEvent,
     MentionNotificationEvent,
     NewDirectMessageNotificationEvent,
     NewMessageInServerEvent,
@@ -116,8 +116,8 @@ __all__ = [
     "UserTypingEvent",
     "VideoProcessingCompletedEvent",
     # Instance inner events
-    "InstanceConfigUpdatedEvent",
-    "InstanceUserPreferencesUpdatedEvent",
+    "ServerConfigUpdatedEvent",
+    "ServerUserPreferencesUpdatedEvent",
     "MentionNotificationEvent",
     "NewDirectMessageNotificationEvent",
     "NewMessageInServerEvent",

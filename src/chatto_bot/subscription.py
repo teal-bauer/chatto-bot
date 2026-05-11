@@ -30,8 +30,8 @@ subscription InstanceEvents {
         actorId
         event {
             __typename
-            ... on InstanceConfigUpdatedEvent {
-                instanceName motd welcomeMessage
+            ... on ServerConfigUpdatedEvent {
+                serverName motd welcomeMessage blockedUsernames
             }
             ... on ServerUpdatedEvent {
                 name description logoUrl bannerUrl
@@ -43,7 +43,7 @@ subscription InstanceEvents {
             ... on UserProfileUpdatedEvent {
                 userId displayName avatarUrl login
             }
-            ... on InstanceUserPreferencesUpdatedEvent {
+            ... on ServerUserPreferencesUpdatedEvent {
                 timezone timeFormat
             }
             ... on NotificationLevelChangedEvent {
