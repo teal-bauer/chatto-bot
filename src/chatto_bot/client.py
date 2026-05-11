@@ -246,7 +246,7 @@ class Client:
         data = await self.query(
             """
             {
-                instance {
+                server {
                     rooms {
                         id name type archived
                         viewerCanPostMessage
@@ -258,8 +258,8 @@ class Client:
             }
             """
         )
-        instance = data.get("instance") or {}
-        rooms = [r for r in (instance.get("rooms") or []) if not r.get("archived")]
+        server = data.get("server") or {}
+        rooms = [r for r in (server.get("rooms") or []) if not r.get("archived")]
         joined_ids = {r["id"] for r in (data.get("me") or {}).get("rooms", [])}
         for r in rooms:
             r["joined"] = r["id"] in joined_ids
@@ -270,7 +270,7 @@ class Client:
         data = await self.query(
             """
             query SearchMembers($search: String!, $limit: Int) {
-                instance {
+                server {
                     members(search: $search, limit: $limit) {
                         users { id login displayName }
                     }
@@ -279,8 +279,8 @@ class Client:
             """,
             {"search": search, "limit": limit},
         )
-        instance = data.get("instance") or {}
-        return (instance.get("members") or {}).get("users") or []
+        server = data.get("server") or {}
+        return (server.get("members") or {}).get("users") or []
 
     async def search_space_members(
         self, space_id: str, search: str, limit: int = 5
