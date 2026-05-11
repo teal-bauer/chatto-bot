@@ -61,6 +61,7 @@ def bot(bot_config, mock_client):
     b._stop_event = None
     b._state_path = MagicMock()
     b._cursor = {}
+    b._room_types = {}
     b._state_dirty = False
     b._state_flush_task = None
     b._middleware = MiddlewareChain()

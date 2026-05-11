@@ -166,7 +166,7 @@ class TestDispatchRoomFilter:
 class TestCursorDedup:
     @pytest.mark.asyncio
     async def test_old_events_skipped(self, bot):
-        bot._cursor = {"S1": "2026-01-01T00:00:00Z"}
+        bot._cursor = {"_global": "2026-01-01T00:00:00Z"}
         called = False
 
         async def ping(ctx):
@@ -187,14 +187,13 @@ class TestStatePersistence:
         with tempfile.TemporaryDirectory() as tmp:
             state_path = Path(tmp) / "state.json"
             bot._state_path = state_path
-            bot._cursor = {"S1": "2026-01-01T00:00:00Z"}
-            bot.config.spaces = ["S1"]
+            bot._cursor = {"_global": "2026-01-01T00:00:00Z"}
 
             bot._save_state()
 
             assert state_path.exists()
             data = json.loads(state_path.read_text())
-            assert data["cursor"]["S1"] == "2026-01-01T00:00:00Z"
+            assert data["cursor"]["_global"] == "2026-01-01T00:00:00Z"
             # Temp file should be cleaned up
             assert not state_path.with_suffix(".tmp").exists()
 
@@ -202,16 +201,29 @@ class TestStatePersistence:
         with tempfile.TemporaryDirectory() as tmp:
             state_path = Path(tmp) / "state.json"
             state_path.write_text(json.dumps({
-                "cursor": {"S1": "2026-01-01T00:00:00Z"},
-                "spaces": ["S1", "S2"],
+                "cursor": {"_global": "2026-01-01T00:00:00Z"},
             }))
             bot._state_path = state_path
-            bot.config.spaces = ["S1"]
 
             bot._load_state()
 
-            assert bot._cursor["S1"] == "2026-01-01T00:00:00Z"
-            assert "S2" in bot.config.spaces
+            assert bot._cursor["_global"] == "2026-01-01T00:00:00Z"
+
+    def test_load_state_migrates_per_space_cursor(self, bot):
+        """Old state files keyed by space_id are folded into the global cursor."""
+        with tempfile.TemporaryDirectory() as tmp:
+            state_path = Path(tmp) / "state.json"
+            state_path.write_text(json.dumps({
+                "cursor": {
+                    "S1": "2026-01-01T00:00:00Z",
+                    "S2": "2026-02-01T00:00:00Z",
+                },
+            }))
+            bot._state_path = state_path
+
+            bot._load_state()
+
+            assert bot._cursor == {"_global": "2026-02-01T00:00:00Z"}
 
     def test_load_state_missing_file(self, bot):
         bot._state_path = Path("/nonexistent/path/state.json")

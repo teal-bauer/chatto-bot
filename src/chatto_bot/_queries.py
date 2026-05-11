@@ -1,12 +1,12 @@
 """Shared GraphQL fragments used by the WebSocket subscription, HTTP queries,
-and mutations that return ``SpaceEvent`` payloads.
+and mutations that return ``RoomEvent`` payloads.
 
 Kept in one place so the data shape stays in lockstep across the three call
 sites; mismatches were the cause of the original schema-drift incident.
 """
 
-SPACE_EVENT_FRAGMENT = """\
-fragment SpaceEventFields on SpaceEvent {
+ROOM_EVENT_FRAGMENT = """\
+fragment RoomEventFields on RoomEvent {
     id
     createdAt
     actorId
@@ -16,7 +16,7 @@ fragment SpaceEventFields on SpaceEvent {
         ... on MessagePostedEvent {
             roomId body
             attachments {
-                id spaceId filename contentType width height url thumbnailUrl
+                id roomId filename contentType width height url thumbnailUrl
                 videoProcessing {
                     status durationMs width height thumbnailUrl errorMessage
                     variants { url quality width height size }
@@ -36,27 +36,25 @@ fragment SpaceEventFields on SpaceEvent {
         }
         ... on MessageUpdatedEvent { roomId messageEventId }
         ... on MessageDeletedEvent { roomId messageEventId }
-        ... on UserJoinedRoomEvent { spaceId roomId }
-        ... on UserLeftRoomEvent { spaceId roomId }
+        ... on RoomCreatedEvent { roomId name description }
+        ... on UserJoinedRoomEvent { roomId }
+        ... on UserLeftRoomEvent { roomId }
         ... on RoomUpdatedEvent { roomId }
         ... on RoomDeletedEvent { roomId }
         ... on RoomArchivedEvent { roomId }
         ... on RoomUnarchivedEvent { roomId }
-        ... on ReactionAddedEvent { spaceId roomId messageEventId emoji }
-        ... on ReactionRemovedEvent { spaceId roomId messageEventId emoji }
-        ... on UserTypingEvent { spaceId roomId threadRootEventId }
+        ... on ReactionAddedEvent { roomId messageEventId emoji }
+        ... on ReactionRemovedEvent { roomId messageEventId emoji }
+        ... on UserTypingEvent { roomId threadRootEventId }
         ... on PresenceChangedEvent { status }
         ... on VideoProcessingCompletedEvent {
-            spaceId roomId attachmentId messageEventId
+            roomId attachmentId messageEventId
         }
-        ... on SpaceMemberDeletedEvent { spaceId userId }
-        ... on CallParticipantJoinedEvent { spaceId roomId }
-        ... on CallParticipantLeftEvent { spaceId roomId }
+        ... on ServerMemberDeletedEvent { userId }
+        ... on CallParticipantJoinedEvent { roomId }
+        ... on CallParticipantLeftEvent { roomId }
     }
 }
 """
 
-
-# InstanceEvent doesn't get a fragment here because its wrapper type name is
-# not known to us (the web client doesn't use a fragment either) and it's
-# only used in one place (the subscription).
+SPACE_EVENT_FRAGMENT = ROOM_EVENT_FRAGMENT  # backward-compat alias

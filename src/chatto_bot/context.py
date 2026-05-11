@@ -34,17 +34,14 @@ class Context:
 
     @property
     def space_id(self) -> str:
-        """The space this event was dispatched from.
+        """Legacy alias — the current schema doesn't carry spaceId on events.
 
-        Reads from the outer SpaceEvent (set by the subscription, since
-        the API no longer includes spaceId on most inner event types).
-        Falls back to inner.space_id for events that still expose it.
+        Returns the wrapper's ``space_id`` if set (kept for downstream code
+        that still passes one around) or an empty string. Most call sites
+        only need :attr:`room_id`.
         """
         if self.event.space_id:
             return self.event.space_id
-        inner = self.event.event
-        if hasattr(inner, "space_id"):
-            return inner.space_id
         return ""
 
     @property
@@ -57,8 +54,8 @@ class Context:
 
     @property
     def is_dm(self) -> bool:
-        """Whether this event is from a direct message."""
-        return self.space_id == "DM"
+        """Whether this event is from a direct message room."""
+        return self.bot._room_types.get(self.room_id) == "DM"
 
     @property
     def body(self) -> str | None:

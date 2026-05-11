@@ -1,6 +1,6 @@
 """Dataclasses mirroring the Chatto GraphQL schema.
 
-Covers both the per-space subscription (`mySpaceEvents`) and the
+Covers both the global per-server subscription (`myServerEvents`) and the
 instance-wide subscription (`myInstanceEvents`). All inner-event types the
 server emits today are represented; unknown typenames parse to an
 ``UnknownEvent`` placeholder so the bot keeps running through API additions.
@@ -53,7 +53,7 @@ class Attachment:
     id: str
     filename: str = ""
     content_type: str = ""
-    space_id: str = ""
+    room_id: str = ""
     width: int = 0
     height: int = 0
     url: str = ""
@@ -80,7 +80,7 @@ class LinkPreview:
     embed_id: str | None = None
 
 
-# --- Inner event union: per-space subscription ---
+# --- Inner event union: room (server-wide) subscription ---
 
 
 @dataclass
@@ -114,14 +114,19 @@ class MessageDeletedEvent:
 
 
 @dataclass
+class RoomCreatedEvent:
+    room_id: str
+    name: str | None = None
+    description: str | None = None
+
+
+@dataclass
 class UserJoinedRoomEvent:
-    space_id: str
     room_id: str
 
 
 @dataclass
 class UserLeftRoomEvent:
-    space_id: str
     room_id: str
 
 
@@ -147,7 +152,6 @@ class RoomUnarchivedEvent:
 
 @dataclass
 class ReactionAddedEvent:
-    space_id: str
     room_id: str
     message_event_id: str
     emoji: str
@@ -155,7 +159,6 @@ class ReactionAddedEvent:
 
 @dataclass
 class ReactionRemovedEvent:
-    space_id: str
     room_id: str
     message_event_id: str
     emoji: str
@@ -163,7 +166,6 @@ class ReactionRemovedEvent:
 
 @dataclass
 class UserTypingEvent:
-    space_id: str
     room_id: str
     thread_root_event_id: str | None = None
 
@@ -175,27 +177,23 @@ class PresenceChangedEvent:
 
 @dataclass
 class VideoProcessingCompletedEvent:
-    space_id: str
     room_id: str
     attachment_id: str
     message_event_id: str
 
 
 @dataclass
-class SpaceMemberDeletedEvent:
-    space_id: str
+class ServerMemberDeletedEvent:
     user_id: str
 
 
 @dataclass
 class CallParticipantJoinedEvent:
-    space_id: str
     room_id: str
 
 
 @dataclass
 class CallParticipantLeftEvent:
-    space_id: str
     room_id: str
 
 
@@ -210,13 +208,19 @@ class InstanceConfigUpdatedEvent:
 
 
 @dataclass
-class SpaceCreatedEvent:
-    space_id: str
+class UserCreatedEvent:
+    user_id: str
+    login: str | None = None
+    display_name: str | None = None
 
 
 @dataclass
-class SpaceUpdatedEvent:
-    space_id: str
+class UserDeletedEvent:
+    user_id: str
+
+
+@dataclass
+class ServerUpdatedEvent:
     name: str | None = None
     description: str | None = None
     logo_url: str | None = None
@@ -224,18 +228,13 @@ class SpaceUpdatedEvent:
 
 
 @dataclass
-class SpaceDeletedEvent:
-    space_id: str
+class UserJoinedServerEvent:
+    user_id: str
 
 
 @dataclass
-class UserJoinedSpaceEvent:
-    space_id: str
-
-
-@dataclass
-class UserLeftSpaceEvent:
-    space_id: str
+class UserLeftServerEvent:
+    user_id: str
 
 
 @dataclass
@@ -254,7 +253,6 @@ class InstanceUserPreferencesUpdatedEvent:
 
 @dataclass
 class NotificationLevelChangedEvent:
-    space_id: str = ""
     room_id: str = ""
     level: str = ""
     effective_level: str = ""
@@ -262,24 +260,21 @@ class NotificationLevelChangedEvent:
 
 @dataclass
 class MentionNotificationEvent:
-    space_id: str = ""
     room_id: str = ""
-    space: dict | None = None  # {"name": ...}
     room: dict | None = None
-    actor: User | None = None  # the user who mentioned (id, displayName)
+    actor: User | None = None
 
 
 @dataclass
 class NewDirectMessageNotificationEvent:
     room_id: str = ""
-    sender: User | None = None  # id, displayName, avatarUrl
+    sender: User | None = None
     conversation_name: str | None = None
 
 
 @dataclass
 class NotificationCreatedEvent:
     notification_id: str
-    space_id: str = ""
     room_id: str = ""
     event_id: str = ""
     in_reply_to_id: str | None = None
@@ -291,20 +286,17 @@ class NotificationDismissedEvent:
 
 
 @dataclass
-class NewMessageInSpaceEvent:
-    space_id: str
+class NewMessageInServerEvent:
     room_id: str
 
 
 @dataclass
 class RoomMarkedAsReadEvent:
-    space_id: str
     room_id: str
 
 
 @dataclass
 class ThreadFollowChangedEvent:
-    space_id: str = ""
     room_id: str = ""
     thread_root_event_id: str = ""
     is_following: bool = False
@@ -312,7 +304,7 @@ class ThreadFollowChangedEvent:
 
 @dataclass
 class RoomLayoutUpdatedEvent:
-    space_id: str
+    changed: bool = False
 
 
 @dataclass
@@ -338,10 +330,11 @@ class UnknownEvent:
 # --- Type unions / lookup tables ---
 
 
-SpaceInnerEvent = (
+RoomInnerEvent = (
     MessagePostedEvent
     | MessageUpdatedEvent
     | MessageDeletedEvent
+    | RoomCreatedEvent
     | UserJoinedRoomEvent
     | UserLeftRoomEvent
     | RoomUpdatedEvent
@@ -353,18 +346,18 @@ SpaceInnerEvent = (
     | UserTypingEvent
     | PresenceChangedEvent
     | VideoProcessingCompletedEvent
-    | SpaceMemberDeletedEvent
+    | ServerMemberDeletedEvent
     | CallParticipantJoinedEvent
     | CallParticipantLeftEvent
 )
 
 InstanceInnerEvent = (
     InstanceConfigUpdatedEvent
-    | SpaceCreatedEvent
-    | SpaceUpdatedEvent
-    | SpaceDeletedEvent
-    | UserJoinedSpaceEvent
-    | UserLeftSpaceEvent
+    | UserCreatedEvent
+    | UserDeletedEvent
+    | ServerUpdatedEvent
+    | UserJoinedServerEvent
+    | UserLeftServerEvent
     | UserProfileUpdatedEvent
     | InstanceUserPreferencesUpdatedEvent
     | NotificationLevelChangedEvent
@@ -372,22 +365,25 @@ InstanceInnerEvent = (
     | NewDirectMessageNotificationEvent
     | NotificationCreatedEvent
     | NotificationDismissedEvent
-    | NewMessageInSpaceEvent
+    | NewMessageInServerEvent
     | RoomMarkedAsReadEvent
     | ThreadFollowChangedEvent
     | RoomLayoutUpdatedEvent
     | SessionTerminatedEvent
 )
 
-EventType = SpaceInnerEvent | InstanceInnerEvent | UnknownEvent
+# Kept under the historical name for backward compat with downstream code.
+SpaceInnerEvent = RoomInnerEvent
+
+EventType = RoomInnerEvent | InstanceInnerEvent | UnknownEvent
 
 
-# Map GraphQL __typename -> dataclass
 _GRAPHQL_TO_EVENT: dict[str, type] = {
-    # Space
+    # Room (server-wide)
     "MessagePostedEvent": MessagePostedEvent,
     "MessageUpdatedEvent": MessageUpdatedEvent,
     "MessageDeletedEvent": MessageDeletedEvent,
+    "RoomCreatedEvent": RoomCreatedEvent,
     "UserJoinedRoomEvent": UserJoinedRoomEvent,
     "UserLeftRoomEvent": UserLeftRoomEvent,
     "RoomUpdatedEvent": RoomUpdatedEvent,
@@ -399,16 +395,16 @@ _GRAPHQL_TO_EVENT: dict[str, type] = {
     "UserTypingEvent": UserTypingEvent,
     "PresenceChangedEvent": PresenceChangedEvent,
     "VideoProcessingCompletedEvent": VideoProcessingCompletedEvent,
-    "SpaceMemberDeletedEvent": SpaceMemberDeletedEvent,
+    "ServerMemberDeletedEvent": ServerMemberDeletedEvent,
     "CallParticipantJoinedEvent": CallParticipantJoinedEvent,
     "CallParticipantLeftEvent": CallParticipantLeftEvent,
     # Instance
     "InstanceConfigUpdatedEvent": InstanceConfigUpdatedEvent,
-    "SpaceCreatedEvent": SpaceCreatedEvent,
-    "SpaceUpdatedEvent": SpaceUpdatedEvent,
-    "SpaceDeletedEvent": SpaceDeletedEvent,
-    "UserJoinedSpaceEvent": UserJoinedSpaceEvent,
-    "UserLeftSpaceEvent": UserLeftSpaceEvent,
+    "UserCreatedEvent": UserCreatedEvent,
+    "UserDeletedEvent": UserDeletedEvent,
+    "ServerUpdatedEvent": ServerUpdatedEvent,
+    "UserJoinedServerEvent": UserJoinedServerEvent,
+    "UserLeftServerEvent": UserLeftServerEvent,
     "UserProfileUpdatedEvent": UserProfileUpdatedEvent,
     "InstanceUserPreferencesUpdatedEvent": InstanceUserPreferencesUpdatedEvent,
     "NotificationLevelChangedEvent": NotificationLevelChangedEvent,
@@ -416,7 +412,7 @@ _GRAPHQL_TO_EVENT: dict[str, type] = {
     "NewDirectMessageNotificationEvent": NewDirectMessageNotificationEvent,
     "NotificationCreatedEvent": NotificationCreatedEvent,
     "NotificationDismissedEvent": NotificationDismissedEvent,
-    "NewMessageInSpaceEvent": NewMessageInSpaceEvent,
+    "NewMessageInServerEvent": NewMessageInServerEvent,
     "RoomMarkedAsReadEvent": RoomMarkedAsReadEvent,
     "ThreadFollowChangedEvent": ThreadFollowChangedEvent,
     "RoomLayoutUpdatedEvent": RoomLayoutUpdatedEvent,
@@ -425,10 +421,11 @@ _GRAPHQL_TO_EVENT: dict[str, type] = {
 
 # snake_case event name -> dataclass (also the public handler-registration key)
 EVENT_NAME_TO_TYPE: dict[str, type] = {
-    # Space
+    # Room
     "message_posted": MessagePostedEvent,
     "message_updated": MessageUpdatedEvent,
     "message_deleted": MessageDeletedEvent,
+    "room_created": RoomCreatedEvent,
     "user_joined_room": UserJoinedRoomEvent,
     "user_left_room": UserLeftRoomEvent,
     "room_updated": RoomUpdatedEvent,
@@ -440,16 +437,16 @@ EVENT_NAME_TO_TYPE: dict[str, type] = {
     "user_typing": UserTypingEvent,
     "presence_changed": PresenceChangedEvent,
     "video_processing_completed": VideoProcessingCompletedEvent,
-    "space_member_deleted": SpaceMemberDeletedEvent,
+    "server_member_deleted": ServerMemberDeletedEvent,
     "call_participant_joined": CallParticipantJoinedEvent,
     "call_participant_left": CallParticipantLeftEvent,
     # Instance
     "instance_config_updated": InstanceConfigUpdatedEvent,
-    "space_created": SpaceCreatedEvent,
-    "space_updated": SpaceUpdatedEvent,
-    "space_deleted": SpaceDeletedEvent,
-    "user_joined_space": UserJoinedSpaceEvent,
-    "user_left_space": UserLeftSpaceEvent,
+    "user_created": UserCreatedEvent,
+    "user_deleted": UserDeletedEvent,
+    "server_updated": ServerUpdatedEvent,
+    "user_joined_server": UserJoinedServerEvent,
+    "user_left_server": UserLeftServerEvent,
     "user_profile_updated": UserProfileUpdatedEvent,
     "instance_user_preferences_updated": InstanceUserPreferencesUpdatedEvent,
     "notification_level_changed": NotificationLevelChangedEvent,
@@ -457,12 +454,11 @@ EVENT_NAME_TO_TYPE: dict[str, type] = {
     "new_direct_message_notification": NewDirectMessageNotificationEvent,
     "notification_created": NotificationCreatedEvent,
     "notification_dismissed": NotificationDismissedEvent,
-    "new_message_in_space": NewMessageInSpaceEvent,
+    "new_message_in_server": NewMessageInServerEvent,
     "room_marked_as_read": RoomMarkedAsReadEvent,
     "thread_follow_changed": ThreadFollowChangedEvent,
     "room_layout_updated": RoomLayoutUpdatedEvent,
     "session_terminated": SessionTerminatedEvent,
-    # Catch-all
     "unknown": UnknownEvent,
 }
 
@@ -473,19 +469,24 @@ _TYPE_TO_EVENT_NAME: dict[type, str] = {v: k for k, v in EVENT_NAME_TO_TYPE.item
 
 
 @dataclass
-class SpaceEvent:
-    """Wrapper around an inner event, common to space and instance subscriptions.
+class RoomEvent:
+    """Wrapper around an inner event, common to room and instance subscriptions.
 
-    For per-space events, all fields are populated. For instance events,
-    ``id``, ``created_at``, ``space_id`` and ``actor`` are typically empty.
+    For room subscription events, all fields are populated. For instance
+    events, ``id`` and ``created_at`` are typically empty and ``actor`` is
+    ``None``.
     """
 
     actor_id: str
     event: EventType
     id: str = ""
     created_at: str = ""
-    space_id: str = ""
+    space_id: str = ""  # kept for backward compat with downstream callers
     actor: User | None = None
+
+
+# Backward-compat alias: legacy code uses ``SpaceEvent``.
+SpaceEvent = RoomEvent
 
 
 # --- Parsing helpers ---
@@ -535,7 +536,7 @@ def _parse_attachment(data: dict) -> Attachment:
         id=data["id"],
         filename=data.get("filename", ""),
         content_type=data.get("contentType", ""),
-        space_id=data.get("spaceId", ""),
+        room_id=data.get("roomId", ""),
         width=data.get("width", 0),
         height=data.get("height", 0),
         url=data.get("url", ""),
@@ -565,20 +566,17 @@ def _parse_link_preview(data: dict) -> LinkPreview:
     )
 
 
-# GraphQL response keys we receive aliased (the web client aliases these to
-# work around field-merge type conflicts in the union). Map back to canonical
-# names before parsing so the dataclass fields stay clean.
+# GraphQL response keys we receive aliased to dodge field-merge type
+# collisions (e.g. NotificationLevelChangedEvent.roomId is nullable while
+# every other event's roomId is non-null). Map back to canonical names
+# before parsing so the dataclass fields stay clean.
 _FIELD_ALIASES: dict[str, str] = {
-    "nlcSpaceId": "spaceId",
     "nlcRoomId": "roomId",
-    "tfcSpaceId": "spaceId",
-    "tfcRoomId": "roomId",
-    "rluSpaceId": "spaceId",
 }
 
 
 def _parse_inner_event(data: dict) -> EventType:
-    """Parse a SpaceEvent's inner event union from GraphQL JSON."""
+    """Parse a wrapper's inner event union from GraphQL JSON."""
     typename = data.get("__typename")
     if not typename:
         raise ValueError("Event data missing __typename")
@@ -615,33 +613,38 @@ def _parse_inner_event(data: dict) -> EventType:
     return cls(**kwargs)
 
 
-def parse_space_event(data: dict, space_id: str = "") -> SpaceEvent:
-    """Parse a wrapper from the per-space subscription (``mySpaceEvents``).
-
-    ``space_id`` is supplied by the caller since the API no longer carries it
-    on the wrapper or on most inner event types.
-    """
+def parse_room_event(data: dict) -> RoomEvent:
+    """Parse a wrapper from the global subscription (``myServerEvents``)."""
     event_data = data.get("event", {})
     actor_data = data.get("actor")
 
-    return SpaceEvent(
+    return RoomEvent(
         id=data.get("id", ""),
         created_at=data.get("createdAt", ""),
         actor_id=data.get("actorId", ""),
-        space_id=space_id,
+        space_id="",
         event=_parse_inner_event(event_data),
         actor=_parse_user(actor_data) if actor_data else None,
     )
 
 
-def parse_instance_event(data: dict) -> SpaceEvent:
+def parse_space_event(data: dict, space_id: str = "") -> RoomEvent:
+    """Backward-compat wrapper around :func:`parse_room_event`.
+
+    ``space_id`` is accepted for API compatibility but ignored — the server
+    no longer carries it on the wrapper or inner events.
+    """
+    return parse_room_event(data)
+
+
+def parse_instance_event(data: dict) -> RoomEvent:
     """Parse a wrapper from the instance subscription (``myInstanceEvents``).
 
     Instance events have no ``id``, ``createdAt`` or wrapper actor; the
     inner event carries any relevant context.
     """
     event_data = data.get("event", {})
-    return SpaceEvent(
+    return RoomEvent(
         id="",
         created_at="",
         actor_id=data.get("actorId", ""),

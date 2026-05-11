@@ -22,13 +22,18 @@ from .middleware import MiddlewareChain, MiddlewareFunc
 from .subscription import SubscriptionManager
 from .types import (
     MessagePostedEvent,
+    RoomEvent,
     SpaceEvent,
     User,
     event_name,
-    parse_space_event,
+    parse_room_event,
 )
 
 logger = logging.getLogger(__name__)
+
+# Cursor key used in the persistent state file. The API exposes a single
+# global event stream, so one cursor covers everything.
+_GLOBAL_CURSOR_KEY = "_global"
 
 
 class Bot:
@@ -64,27 +69,23 @@ class Bot:
         self._commands: dict[str, Command] = {}
         self._event_handlers: list[EventHandler] = []
         self._cogs: dict[str, Cog] = {}
-        self._extensions: dict[str, Any] = {}  # module name -> module
+        self._extensions: dict[str, Any] = {}
 
         # Bot's own user (populated on connect)
         self.user: User | None = None
         self._closed = False
         self._stop_event: asyncio.Event | None = None
 
-        # Persistent state: last processed event timestamp per space
+        # room_id -> RoomType ("CHANNEL" | "DM"), populated from Instance.rooms
+        # at startup. Used to gate DM dispatch when ``config.dms`` is false.
+        self._room_types: dict[str, str] = {}
+
+        # Persistent state: last processed event timestamp (global cursor).
         self._state_path = Path(".chatto-bot-state.json")
-        self._cursor: dict[str, str] = {}  # space_id -> last created_at
+        self._cursor: dict[str, str] = {}
         self._state_dirty = False
         self._state_flush_task: asyncio.Task | None = None
         self._load_state()
-
-    @property
-    def _all_spaces(self) -> list[str]:
-        """All space IDs to subscribe to, including DM if enabled."""
-        spaces = list(self.config.spaces)
-        if self.config.dms and "DM" not in spaces:
-            spaces.append("DM")
-        return spaces
 
     # --- Command registration ---
 
@@ -183,11 +184,9 @@ class Bot:
         if name in self._cogs:
             raise ValueError(f"Cog {name!r} is already loaded")
 
-        # Register commands
         for cmd in cog.__cog_commands__:
             self.add_command(cmd)
 
-        # Register event handlers
         self._event_handlers.extend(cog.__cog_event_handlers__)
 
         self._cogs[name] = cog
@@ -200,11 +199,9 @@ class Bot:
         if not cog:
             return None
 
-        # Remove commands
         for cmd in cog.__cog_commands__:
             self.remove_command(cmd.name)
 
-        # Remove event handlers
         for handler in cog.__cog_event_handlers__:
             try:
                 self._event_handlers.remove(handler)
@@ -241,7 +238,6 @@ class Bot:
         if teardown:
             await teardown(self)
 
-        # Remove any cogs that belong to this extension
         cog_names = [
             name
             for name, cog in self._cogs.items()
@@ -264,14 +260,12 @@ class Bot:
 
         await self.unload_extension(module_name)
 
-        # Force reimport
         if module_name in sys.modules:
             del sys.modules[module_name]
 
         try:
             await self.load_extension(module_name)
         except Exception:
-            # Restore the old module so the extension isn't lost
             logger.exception("Failed to reload %s, restoring previous version", module_name)
             if old_sys_module is not None:
                 sys.modules[module_name] = old_sys_module
@@ -284,24 +278,26 @@ class Bot:
 
     # --- Event dispatching ---
 
-    async def _dispatch(self, event: SpaceEvent) -> None:
-        """Dispatch a SpaceEvent through middleware and to handlers."""
-        ctx_space = event.space_id or getattr(event.event, "space_id", None) or ""
-
-        # Cursor dedup applies to per-space events only (instance events have
+    async def _dispatch(self, event: RoomEvent) -> None:
+        """Dispatch an event through middleware and to handlers."""
+        # Cursor dedup applies to per-room events only (instance events have
         # no created_at and aren't part of a replay-able stream).
-        if ctx_space and event.created_at:
-            cursor_ts = self._cursor.get(ctx_space, "")
+        if event.created_at:
+            cursor_ts = self._cursor.get(_GLOBAL_CURSOR_KEY, "")
             if cursor_ts and event.created_at <= cursor_ts:
                 return
-            self._advance_cursor(ctx_space, event.created_at)
+            self._advance_cursor(event.created_at)
             self._mark_state_dirty()
 
+        room_id = getattr(event.event, "room_id", None) or ""
+
         # Skip events from rooms not in the allowlist (if configured)
-        if self.config.rooms:
-            room_id = getattr(event.event, "room_id", None)
-            if room_id and room_id not in self.config.rooms:
-                return
+        if self.config.rooms and room_id and room_id not in self.config.rooms:
+            return
+
+        # Respect the ``dms`` config toggle (uses cached room types).
+        if not self.config.dms and room_id and self._room_types.get(room_id) == "DM":
+            return
 
         # Ignore the bot's own events to prevent infinite loops
         if self.user and event.actor_id == self.user.id:
@@ -311,13 +307,11 @@ class Bot:
         etype = event_name(event.event)
 
         async def handle() -> None:
-            # 1. Command dispatch (for message_posted events)
             if isinstance(event.event, MessagePostedEvent) and event.event.body:
                 body = event.event.body
                 if body.startswith(self.config.prefix):
                     await self._dispatch_command(ctx, body)
 
-            # 2. Event handler dispatch
             for handler in self._event_handlers:
                 if handler.event_type == etype and handler.matches(ctx):
                     try:
@@ -331,7 +325,6 @@ class Bot:
 
     async def _dispatch_command(self, ctx: Context, body: str) -> None:
         """Parse and dispatch a command from a message body."""
-        # Strip prefix
         content = body[len(self.config.prefix) :]
         parts = content.split(None, 1)
         if not parts:
@@ -344,7 +337,6 @@ class Bot:
         if not cmd:
             return
 
-        # Enforce admin-only commands
         if cmd.admin:
             actor = ctx.actor
             if not actor or actor.login not in self.config.admins:
@@ -363,12 +355,12 @@ class Bot:
         if self._state_path.exists():
             try:
                 data = json.loads(self._state_path.read_text())
-                self._cursor = data.get("cursor", {})
-                # Restore dynamically added spaces
-                if saved_spaces := data.get("spaces"):
-                    for s in saved_spaces:
-                        if s not in self.config.spaces:
-                            self.config.spaces.append(s)
+                cursor = data.get("cursor") or {}
+                # Migrate older per-space cursors to a single global cursor
+                # by keeping the most recent timestamp.
+                if cursor and _GLOBAL_CURSOR_KEY not in cursor:
+                    cursor = {_GLOBAL_CURSOR_KEY: max(cursor.values())}
+                self._cursor = cursor
             except Exception:
                 self._cursor = {}
 
@@ -391,35 +383,45 @@ class Bot:
     def _save_state(self) -> None:
         self._state_dirty = False
         tmp = self._state_path.with_suffix(".tmp")
-        tmp.write_text(
-            json.dumps({"cursor": self._cursor, "spaces": self.config.spaces})
-        )
+        tmp.write_text(json.dumps({"cursor": self._cursor}))
         os.replace(tmp, self._state_path)
 
-    def _advance_cursor(self, space_id: str, created_at: str) -> None:
-        """Update the cursor if this event is newer than what we've seen."""
-        prev = self._cursor.get(space_id, "")
+    def _advance_cursor(self, created_at: str) -> None:
+        """Update the global cursor if this event is newer than what we've seen."""
+        prev = self._cursor.get(_GLOBAL_CURSOR_KEY, "")
         if created_at > prev:
-            self._cursor[space_id] = created_at
+            self._cursor[_GLOBAL_CURSOR_KEY] = created_at
 
     # --- Replay ---
 
-    async def _replay_missed(self, space_id: str) -> None:
-        """Replay events missed since last shutdown, up to 1 hour."""
-        hard_cutoff = datetime.now(timezone.utc) - timedelta(hours=1)
-        cursor_ts = self._cursor.get(space_id, "")
-
+    async def _refresh_room_types(self) -> list[dict]:
+        """Refresh the cached room-type map and return the room list."""
         try:
-            rooms = await self.client.get_rooms(space_id)
+            rooms = await self.client.get_rooms()
         except Exception:
-            logger.exception("Failed to fetch rooms for replay in space %s", space_id)
-            return
+            logger.exception("Failed to fetch rooms")
+            return []
+        self._room_types = {r["id"]: r.get("type", "CHANNEL") for r in rooms}
+        return rooms
+
+    async def _replay_missed(self, rooms: list[dict]) -> None:
+        """Replay events missed since last shutdown, up to 1 hour.
+
+        Walks every room visible to the bot. Cheap when nothing is new since
+        the cursor short-circuits replay events older than the cursor.
+        """
+        hard_cutoff = datetime.now(timezone.utc) - timedelta(hours=1)
+        cursor_ts = self._cursor.get(_GLOBAL_CURSOR_KEY, "")
 
         replayed = 0
         for room in rooms:
+            if self.config.rooms and room["id"] not in self.config.rooms:
+                continue
+            if not self.config.dms and room.get("type") == "DM":
+                continue
             try:
                 page = await self.client.get_room_events(
-                    space_id, room["id"], limit=50
+                    "", room["id"], limit=50
                 )
             except Exception:
                 logger.debug("Skipping replay for room %s: no access", room["id"])
@@ -430,7 +432,6 @@ class Bot:
             for event_data in reversed(events):
                 created_at = event_data.get("createdAt", "")
 
-                # Skip events older than 1 hour
                 try:
                     event_time = datetime.fromisoformat(
                         created_at.replace("Z", "+00:00")
@@ -440,19 +441,18 @@ class Bot:
                 if event_time < hard_cutoff:
                     continue
 
-                # Skip events we already processed
                 if cursor_ts and created_at <= cursor_ts:
                     continue
 
                 try:
-                    event = parse_space_event(event_data, space_id=space_id)
+                    event = parse_room_event(event_data)
                     await self._dispatch(event)
                     replayed += 1
                 except Exception:
                     logger.debug("Skipping unprocessable replay event")
 
         if replayed:
-            logger.info("Replayed %d missed events in space %s", replayed, space_id)
+            logger.info("Replayed %d missed events", replayed)
 
         self._save_state()
 
@@ -476,7 +476,6 @@ class Bot:
         """Connect to the API, verify auth, and start subscriptions."""
         await self._ensure_session()
 
-        # Verify authentication
         me_data = await self.client.me()
         if not me_data:
             raise RuntimeError(
@@ -494,51 +493,37 @@ class Bot:
             "Authenticated as %s (%s)", self.user.display_name, self.user.login
         )
 
-        # Set presence to ONLINE
         try:
             await self.client.update_presence("ONLINE")
             logger.info("Presence set to ONLINE")
         except Exception:
             logger.warning("Could not set presence (server may not support it)")
 
-        # Load configured extensions
         for ext in self.config.extensions:
             try:
                 await self.load_extension(ext)
             except Exception:
                 logger.exception("Failed to load extension: %s", ext)
 
-        # Start subscriptions for each configured space (+ DMs if enabled)
-        all_spaces = self._all_spaces
-        if not all_spaces:
-            logger.warning("No spaces configured — bot won't receive events")
-            return
+        rooms = await self._refresh_room_types()
+        await self._replay_missed(rooms)
 
-        # Replay missed events from the last hour
-        for space_id in all_spaces:
-            await self._replay_missed(space_id)
-
-        # Start live subscriptions
-        for space_id in all_spaces:
-            self._subscriptions.start(space_id, self._dispatch)
-
-        # Start instance subscription — dispatches instance events as hooks
-        # (and keeps presence online as a side effect)
+        self._subscriptions.start_server(self._dispatch)
         self._subscriptions.start_instance(self._dispatch)
 
     async def subscribe_space(self, space_id: str) -> None:
-        """Subscribe to a space at runtime and persist it."""
-        if space_id not in self.config.spaces:
-            self.config.spaces.append(space_id)
-        self._subscriptions.start(space_id, self._dispatch)
-        self._save_state()
+        """No-op kept for backward compat.
+
+        The current Chatto schema exposes a single global event stream
+        (``myServerEvents``); per-space subscriptions no longer exist.
+        """
+        del space_id
+        logger.debug("subscribe_space is a no-op under the current schema")
 
     async def unsubscribe_space(self, space_id: str) -> None:
-        """Unsubscribe from a space at runtime and persist it."""
-        await self._subscriptions.stop_one(space_id)
-        if space_id in self.config.spaces:
-            self.config.spaces.remove(space_id)
-        self._save_state()
+        """No-op kept for backward compat. See :meth:`subscribe_space`."""
+        del space_id
+        logger.debug("unsubscribe_space is a no-op under the current schema")
 
     async def close(self) -> None:
         """Gracefully shut down (idempotent)."""
@@ -549,13 +534,11 @@ class Bot:
         self._save_state()
         await self._subscriptions.stop()
 
-        # Unload cogs before closing client so cog_unload() can still make API calls
         for name in list(self._cogs.keys()):
             await self.remove_cog(name)
 
         await self.client.close()
 
-        # Unblock _runner if it's waiting
         if self._stop_event:
             self._stop_event.set()
 
@@ -564,19 +547,15 @@ class Bot:
         logger.info("Reloading...")
         self._save_state()
 
-        # Stop current subscriptions
         await self._subscriptions.stop()
         await self.client.close()
 
-        # Re-read config (YAML / .env / env vars), keeping explicit overrides
         self.config = BotConfig.load(self._config_path, **self._init_kwargs)
         self.client = Client(self.config)
         self._subscriptions = SubscriptionManager(self.config)
 
-        # Login if needed (may recreate client/subscriptions)
         await self._ensure_session()
 
-        # Verify auth still works
         me_data = await self.client.me()
         if not me_data:
             logger.error("Authentication failed after reload — check session")
@@ -593,19 +572,16 @@ class Bot:
             "Re-authenticated as %s (%s)", self.user.display_name, self.user.login
         )
 
-        # Reload extensions
         for ext_name in list(self._extensions.keys()):
             try:
                 await self.reload_extension(ext_name)
             except Exception:
                 logger.exception("Failed to reload extension: %s", ext_name)
 
-        # Replay and resubscribe
-        all_spaces = self._all_spaces
-        for space_id in all_spaces:
-            await self._replay_missed(space_id)
-        for space_id in all_spaces:
-            self._subscriptions.start(space_id, self._dispatch)
+        rooms = await self._refresh_room_types()
+        await self._replay_missed(rooms)
+
+        self._subscriptions.start_server(self._dispatch)
         self._subscriptions.start_instance(self._dispatch)
 
         logger.info("Reload complete")
@@ -622,7 +598,6 @@ class Bot:
             self._stop_event = asyncio.Event()
             loop = asyncio.get_running_loop()
 
-            # Signal handlers
             for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
                 loop.add_signal_handler(
                     sig, lambda s=sig: asyncio.create_task(self._handle_signal(s))

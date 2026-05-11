@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 
-from ._queries import SPACE_EVENT_FRAGMENT
+from ._queries import ROOM_EVENT_FRAGMENT
 
 if TYPE_CHECKING:
     from .config import BotConfig
@@ -112,10 +112,14 @@ class Client:
         *,
         in_reply_to: str | None = None,
     ) -> dict:
-        """Post a message and return the SpaceEvent."""
+        """Post a message and return the wrapper RoomEvent.
+
+        ``space_id`` is accepted for backward compatibility but ignored by
+        the current Chatto schema.
+        """
+        del space_id
         variables: dict[str, Any] = {
             "input": {
-                "spaceId": space_id,
                 "roomId": room_id,
                 "body": body,
             }
@@ -124,9 +128,9 @@ class Client:
             variables["input"]["inReplyTo"] = in_reply_to
 
         data = await self.mutate(
-            SPACE_EVENT_FRAGMENT + """
+            ROOM_EVENT_FRAGMENT + """
             mutation PostMessage($input: PostMessageInput!) {
-                postMessage(input: $input) { ...SpaceEventFields }
+                postMessage(input: $input) { ...RoomEventFields }
             }
             """,
             variables,
@@ -140,52 +144,56 @@ class Client:
         event_id: str,
         body: str,
     ) -> bool:
+        del space_id
         data = await self.mutate(
             """
             mutation EditMessage($input: EditMessageInput!) {
                 editMessage(input: $input)
             }
             """,
-            {"input": {"spaceId": space_id, "roomId": room_id, "eventId": event_id, "body": body}},
+            {"input": {"roomId": room_id, "eventId": event_id, "body": body}},
         )
         return data["editMessage"]
 
     async def delete_message(
         self, space_id: str, room_id: str, event_id: str
     ) -> bool:
+        del space_id
         data = await self.mutate(
             """
             mutation DeleteMessage($input: DeleteMessageInput!) {
                 deleteMessage(input: $input)
             }
             """,
-            {"input": {"spaceId": space_id, "roomId": room_id, "eventId": event_id}},
+            {"input": {"roomId": room_id, "eventId": event_id}},
         )
         return data["deleteMessage"]
 
     async def add_reaction(
         self, space_id: str, room_id: str, message_event_id: str, emoji: str
     ) -> bool:
+        del space_id
         data = await self.mutate(
             """
             mutation AddReaction($input: AddReactionInput!) {
                 addReaction(input: $input)
             }
             """,
-            {"input": {"spaceId": space_id, "roomId": room_id, "messageEventId": message_event_id, "emoji": emoji}},
+            {"input": {"roomId": room_id, "messageEventId": message_event_id, "emoji": emoji}},
         )
         return data["addReaction"]
 
     async def remove_reaction(
         self, space_id: str, room_id: str, message_event_id: str, emoji: str
     ) -> bool:
+        del space_id
         data = await self.mutate(
             """
             mutation RemoveReaction($input: RemoveReactionInput!) {
                 removeReaction(input: $input)
             }
             """,
-            {"input": {"spaceId": space_id, "roomId": room_id, "messageEventId": message_event_id, "emoji": emoji}},
+            {"input": {"roomId": room_id, "messageEventId": message_event_id, "emoji": emoji}},
         )
         return data["removeReaction"]
 
@@ -195,7 +203,7 @@ class Client:
             """
             mutation StartDM($input: StartDMInput!) {
                 startDM(input: $input) {
-                    id name spaceId
+                    id name
                     members { id login displayName }
                 }
             }
@@ -205,103 +213,81 @@ class Client:
         return data["startDM"]
 
     async def join_room(self, space_id: str, room_id: str) -> bool:
+        del space_id
         data = await self.mutate(
             """
             mutation JoinRoom($input: JoinRoomInput!) {
                 joinRoom(input: $input)
             }
             """,
-            {"input": {"spaceId": space_id, "roomId": room_id}},
+            {"input": {"roomId": room_id}},
         )
         return data["joinRoom"]
 
     async def leave_room(self, space_id: str, room_id: str) -> bool:
+        del space_id
         data = await self.mutate(
             """
             mutation LeaveRoom($input: LeaveRoomInput!) {
                 leaveRoom(input: $input)
             }
             """,
-            {"input": {"spaceId": space_id, "roomId": room_id}},
+            {"input": {"roomId": room_id}},
         )
         return data["leaveRoom"]
 
-    async def join_space(self, space_id: str) -> bool:
-        data = await self.mutate(
-            """
-            mutation JoinSpace($input: JoinSpaceInput!) {
-                joinSpace(input: $input)
-            }
-            """,
-            {"input": {"spaceId": space_id}},
-        )
-        return data["joinSpace"]
+    async def get_rooms(self, space_id: str = "") -> list[dict]:
+        """Return all rooms visible to the bot, with joined/type metadata.
 
-    async def leave_space(self, space_id: str) -> bool:
-        data = await self.mutate(
-            """
-            mutation LeaveSpace($input: LeaveSpaceInput!) {
-                leaveSpace(input: $input)
-            }
-            """,
-            {"input": {"spaceId": space_id}},
-        )
-        return data["leaveSpace"]
-
-    async def get_spaces(self) -> list[dict]:
-        """Get all spaces visible to the bot."""
-        data = await self.query(
-            "{ spaces { id name viewerIsMember } }"
-        )
-        return data.get("spaces", [])
-
-    async def get_rooms(self, space_id: str) -> list[dict]:
-        """Get all visible rooms in a space with bot's membership status."""
+        ``space_id`` is accepted for backward compatibility but ignored —
+        the API no longer scopes rooms by space.
+        """
+        del space_id
         data = await self.query(
             """
-            query GetRooms($spaceId: ID!) {
-                space(id: $spaceId) {
-                    rooms { id name archived }
+            {
+                instance {
+                    rooms {
+                        id name type archived
+                        viewerCanPostMessage
+                    }
                 }
                 me {
-                    rooms(spaceId: $spaceId) { id }
+                    rooms { id }
                 }
             }
-            """,
-            {"spaceId": space_id},
+            """
         )
-        space = data.get("space")
-        if not space:
-            return []
-        joined_ids = {
-            r["id"]
-            for r in (data.get("me") or {}).get("rooms", [])
-        }
-        rooms = [r for r in space.get("rooms", []) if not r.get("archived")]
+        instance = data.get("instance") or {}
+        rooms = [r for r in (instance.get("rooms") or []) if not r.get("archived")]
+        joined_ids = {r["id"] for r in (data.get("me") or {}).get("rooms", [])}
         for r in rooms:
             r["joined"] = r["id"] in joined_ids
         return rooms
 
-    async def search_space_members(
-        self, space_id: str, search: str, limit: int = 5
-    ) -> list[dict]:
-        """Search for members in a space by display name."""
+    async def search_members(self, search: str, limit: int = 5) -> list[dict]:
+        """Search for members in the instance by display name."""
         data = await self.query(
             """
-            query SearchMembers($spaceId: ID!, $search: String!, $limit: Int) {
-                space(id: $spaceId) {
+            query SearchMembers($search: String!, $limit: Int) {
+                instance {
                     members(search: $search, limit: $limit) {
                         users { id login displayName }
                     }
                 }
             }
             """,
-            {"spaceId": space_id, "search": search, "limit": limit},
+            {"search": search, "limit": limit},
         )
-        space = data.get("space")
-        if not space:
-            return []
-        return space.get("members", {}).get("users", [])
+        instance = data.get("instance") or {}
+        return (instance.get("members") or {}).get("users") or []
+
+    async def search_space_members(
+        self, space_id: str, search: str, limit: int = 5
+    ) -> list[dict]:
+        """Backward-compat wrapper around :meth:`search_members`."""
+        del space_id
+        return await self.search_members(search, limit)
 
     async def get_room_events(
         self,
@@ -316,28 +302,29 @@ class Client:
 
         Returns a connection dict ``{"events": [...], "hasOlder": bool,
         "hasNewer": bool}``. Use ``before`` / ``after`` event IDs for paging.
+        ``space_id`` is accepted for backward compatibility but ignored.
         """
+        del space_id
         variables: dict[str, Any] = {
-            "spaceId": space_id,
             "roomId": room_id,
             "limit": limit,
         }
-        params = "$spaceId: ID!, $roomId: ID!, $limit: Int"
-        args = "spaceId: $spaceId, roomId: $roomId, limit: $limit"
+        params = "$roomId: ID!, $limit: Int"
+        args = "roomId: $roomId, limit: $limit"
         if before is not None:
-            params += ", $before: ID"
+            params += ", $before: String"
             args += ", before: $before"
             variables["before"] = before
         if after is not None:
-            params += ", $after: ID"
+            params += ", $after: String"
             args += ", after: $after"
             variables["after"] = after
 
         data = await self.query(
-            SPACE_EVENT_FRAGMENT + f"""
+            ROOM_EVENT_FRAGMENT + f"""
             query RoomEvents({params}) {{
                 roomEvents({args}) {{
-                    events {{ ...SpaceEventFields }}
+                    events {{ ...RoomEventFields }}
                     hasOlder hasNewer
                 }}
             }}
@@ -349,15 +336,16 @@ class Client:
     async def get_event(
         self, space_id: str, room_id: str, event_id: str
     ) -> dict | None:
-        """Fetch a single SpaceEvent by id (e.g. to refetch after MessageUpdated)."""
+        """Fetch a single RoomEvent by id (e.g. to refetch after MessageUpdated)."""
+        del space_id
         data = await self.query(
-            SPACE_EVENT_FRAGMENT + """
-            query GetEvent($spaceId: ID!, $roomId: ID!, $eventId: ID!) {
-                roomEventByEventId(spaceId: $spaceId, roomId: $roomId, eventId: $eventId) {
-                    ...SpaceEventFields
+            ROOM_EVENT_FRAGMENT + """
+            query GetEvent($roomId: ID!, $eventId: ID!) {
+                roomEventByEventId(roomId: $roomId, eventId: $eventId) {
+                    ...RoomEventFields
                 }
             }
             """,
-            {"spaceId": space_id, "roomId": room_id, "eventId": event_id},
+            {"roomId": room_id, "eventId": event_id},
         )
         return data.get("roomEventByEventId")
