@@ -508,8 +508,7 @@ class Bot:
         rooms = await self._refresh_room_types()
         await self._replay_missed(rooms)
 
-        self._subscriptions.start_server(self._dispatch)
-        self._subscriptions.start_instance(self._dispatch)
+        self._subscriptions.start(self._dispatch)
 
     async def subscribe_space(self, space_id: str) -> None:
         """No-op kept for backward compat.
@@ -581,8 +580,7 @@ class Bot:
         rooms = await self._refresh_room_types()
         await self._replay_missed(rooms)
 
-        self._subscriptions.start_server(self._dispatch)
-        self._subscriptions.start_instance(self._dispatch)
+        self._subscriptions.start(self._dispatch)
 
         logger.info("Reload complete")
 

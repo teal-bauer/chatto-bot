@@ -46,11 +46,11 @@ from .types import (
     UserTypingEvent,
     VideoProcessingCompletedEvent,
     # Instance inner events
+    HeartbeatEvent,
     ServerConfigUpdatedEvent,
     ServerUserPreferencesUpdatedEvent,
     MentionNotificationEvent,
     NewDirectMessageNotificationEvent,
-    NewMessageInServerEvent,
     NotificationCreatedEvent,
     NotificationDismissedEvent,
     NotificationLevelChangedEvent,
@@ -61,8 +61,6 @@ from .types import (
     ThreadFollowChangedEvent,
     UserCreatedEvent,
     UserDeletedEvent,
-    UserJoinedServerEvent,
-    UserLeftServerEvent,
     UserProfileUpdatedEvent,
 )
 
@@ -116,11 +114,11 @@ __all__ = [
     "UserTypingEvent",
     "VideoProcessingCompletedEvent",
     # Instance inner events
+    "HeartbeatEvent",
     "ServerConfigUpdatedEvent",
     "ServerUserPreferencesUpdatedEvent",
     "MentionNotificationEvent",
     "NewDirectMessageNotificationEvent",
-    "NewMessageInServerEvent",
     "NotificationCreatedEvent",
     "NotificationDismissedEvent",
     "NotificationLevelChangedEvent",
@@ -131,7 +129,5 @@ __all__ = [
     "ThreadFollowChangedEvent",
     "UserCreatedEvent",
     "UserDeletedEvent",
-    "UserJoinedServerEvent",
-    "UserLeftServerEvent",
     "UserProfileUpdatedEvent",
 ]

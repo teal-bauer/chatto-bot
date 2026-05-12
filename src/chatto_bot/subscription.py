@@ -9,27 +9,70 @@ from typing import TYPE_CHECKING, Awaitable, Callable
 
 import websockets
 
-from ._queries import ROOM_EVENT_FRAGMENT
-from .types import RoomEvent, parse_instance_event, parse_room_event
+from .types import RoomEvent, parse_my_event
 
 if TYPE_CHECKING:
     from .config import BotConfig
 
 logger = logging.getLogger(__name__)
 
-SERVER_EVENTS_QUERY = ROOM_EVENT_FRAGMENT + """
-subscription ServerEvents {
-    myServerEvents { ...RoomEventFields }
-}
-"""
 
-
-INSTANCE_EVENTS_QUERY = """\
-subscription InstanceEvents {
-    myInstanceEvents {
+# Single Chatto subscription endpoint. ``myEvents`` returns a ``ServerEvent``
+# wrapping a union (``ServerEventType``) covering every room- and server-level
+# event the viewer can see, plus a periodic ``HeartbeatEvent`` keepalive.
+#
+# Note on the ``NotificationLevelChangedEvent`` alias: its ``roomId`` is
+# nullable while every other event's ``roomId`` is non-null. Without aliasing
+# graphql-go refuses to merge the selection set.
+MY_EVENTS_QUERY = """\
+subscription MyEvents {
+    myEvents {
+        id
+        createdAt
         actorId
+        actor { id login displayName avatarUrl presenceStatus }
         event {
             __typename
+            ... on MessagePostedEvent {
+                roomId body
+                attachments {
+                    id roomId filename contentType width height url thumbnailUrl
+                    videoProcessing {
+                        status durationMs width height thumbnailUrl errorMessage
+                        variants { url quality width height size }
+                    }
+                }
+                linkPreview {
+                    url title description imageUrl siteName embedType embedId
+                }
+                inReplyTo inThread
+                reactions { emoji count users { id login displayName } hasReacted }
+                updatedAt replyCount lastReplyAt
+                echoOfEventId echoFromThreadRootEventId
+                threadParticipants(first: 5) {
+                    id login displayName avatarUrl presenceStatus
+                }
+                viewerIsFollowingThread
+            }
+            ... on MessageUpdatedEvent { roomId messageEventId }
+            ... on MessageDeletedEvent { roomId messageEventId }
+            ... on RoomCreatedEvent { roomId name description }
+            ... on UserJoinedRoomEvent { roomId }
+            ... on UserLeftRoomEvent { roomId }
+            ... on RoomUpdatedEvent { roomId }
+            ... on RoomDeletedEvent { roomId }
+            ... on RoomArchivedEvent { roomId }
+            ... on RoomUnarchivedEvent { roomId }
+            ... on ReactionAddedEvent { roomId messageEventId emoji }
+            ... on ReactionRemovedEvent { roomId messageEventId emoji }
+            ... on UserTypingEvent { roomId utThreadRootEventId: threadRootEventId }
+            ... on PresenceChangedEvent { status }
+            ... on VideoProcessingCompletedEvent {
+                roomId attachmentId messageEventId
+            }
+            ... on ServerMemberDeletedEvent { userId }
+            ... on CallParticipantJoinedEvent { roomId }
+            ... on CallParticipantLeftEvent { roomId }
             ... on ServerConfigUpdatedEvent {
                 serverName motd welcomeMessage blockedUsernames
             }
@@ -38,8 +81,6 @@ subscription InstanceEvents {
             }
             ... on UserCreatedEvent { userId login displayName }
             ... on UserDeletedEvent { userId }
-            ... on UserJoinedServerEvent { userId }
-            ... on UserLeftServerEvent { userId }
             ... on UserProfileUpdatedEvent {
                 userId displayName avatarUrl login
             }
@@ -64,44 +105,43 @@ subscription InstanceEvents {
                 notificationId roomId eventId inReplyToId
             }
             ... on NotificationDismissedEvent { notificationId }
-            ... on NewMessageInServerEvent { roomId }
             ... on RoomMarkedAsReadEvent { roomId }
             ... on ThreadFollowChangedEvent {
                 roomId threadRootEventId isFollowing
             }
             ... on RoomLayoutUpdatedEvent { changed }
             ... on SessionTerminatedEvent { reason }
+            ... on HeartbeatEvent { alive }
         }
     }
 }"""
 
 
 class SubscriptionManager:
-    """Manages the bot's WebSocket subscriptions to Chatto.
+    """Manages the bot's WebSocket subscription to Chatto's ``myEvents`` stream.
 
-    The server exposes two streams: ``myServerEvents`` (one global stream of
-    all room events the user can see) and ``myInstanceEvents`` (account- and
-    instance-wide notifications). Both are kept alive with auto-reconnect.
+    The server collapsed its previously separate room and instance streams into
+    a single subscription that emits every event (plus periodic heartbeats)
+    the viewer is permitted to see. We keep it alive with auto-reconnect.
     """
 
-    SERVER_TASK_KEY = "_server"
-    INSTANCE_TASK_KEY = "_instance"
+    TASK_KEY = "_events"
 
     def __init__(self, config: BotConfig) -> None:
         self.config = config
         self._tasks: dict[str, asyncio.Task] = {}
 
-    async def _run_server_subscription(
+    async def _run_subscription(
         self,
         callback: Callable[[RoomEvent], Awaitable[None]],
     ) -> None:
-        """Run a single ``myServerEvents`` subscription connection."""
+        """Run a single ``myEvents`` subscription connection."""
         headers = {
             "Cookie": self.config.cookie_header,
             "Origin": self.config.instance,
         }
 
-        logger.info("Connecting server subscription")
+        logger.info("Connecting events subscription")
 
         async with websockets.connect(
             self.config.ws_url,
@@ -114,11 +154,11 @@ class SubscriptionManager:
                 raise RuntimeError(f"Expected connection_ack, got: {ack}")
 
             await ws.send(json.dumps({
-                "id": "server",
+                "id": "events",
                 "type": "subscribe",
-                "payload": {"query": SERVER_EVENTS_QUERY},
+                "payload": {"query": MY_EVENTS_QUERY},
             }))
-            logger.info("Server subscription active")
+            logger.info("Events subscription active")
 
             async for raw in ws:
                 msg = json.loads(raw)
@@ -126,158 +166,79 @@ class SubscriptionManager:
 
                 if msg_type == "next":
                     try:
-                        event_data = msg["payload"]["data"]["myServerEvents"]
-                        event = parse_room_event(event_data)
+                        event_data = msg["payload"]["data"]["myEvents"]
+                        event = parse_my_event(event_data)
                         await callback(event)
                     except Exception:
                         logger.exception("Error processing event")
 
                 elif msg_type == "error":
-                    logger.error("Server subscription error: %s", msg.get("payload"))
+                    logger.error("Events subscription error: %s", msg.get("payload"))
 
                 elif msg_type == "complete":
-                    logger.info("Server subscription completed by server")
+                    logger.info("Events subscription completed by server")
                     break
 
                 elif msg_type == "ping":
                     await ws.send(json.dumps({"type": "pong"}))
 
-    async def _server_subscribe_loop(
+    async def _subscribe_loop(
         self,
         callback: Callable[[RoomEvent], Awaitable[None]],
     ) -> None:
-        """Keep server subscription alive with auto-reconnect."""
+        """Keep the events subscription alive with auto-reconnect."""
         backoff = 1.0
 
         while True:
             try:
-                await self._run_server_subscription(callback)
+                await self._run_subscription(callback)
             except asyncio.CancelledError:
-                logger.info("Server subscription cancelled")
+                logger.info("Events subscription cancelled")
                 return
             except Exception:
                 logger.exception(
-                    "Server subscription error, reconnecting in %.1fs", backoff
+                    "Events subscription error, reconnecting in %.1fs", backoff
                 )
                 await asyncio.sleep(backoff)
                 backoff = min(backoff * 2, 60.0)
             else:
                 logger.warning(
-                    "Server subscription ended, reconnecting in %.1fs", backoff
+                    "Events subscription ended, reconnecting in %.1fs", backoff
                 )
                 await asyncio.sleep(backoff)
                 backoff = min(backoff * 2, 60.0)
 
-    async def _run_instance_subscription(
+    def start(
         self,
-        callback: Callable[[RoomEvent], Awaitable[None]] | None,
-    ) -> None:
-        """Subscribe to myInstanceEvents and dispatch events through callback.
+        callback: Callable[[RoomEvent], Awaitable[None]],
+    ) -> asyncio.Task:
+        """Start the global ``myEvents`` subscription."""
+        if self.TASK_KEY in self._tasks:
+            return self._tasks[self.TASK_KEY]
+        task = asyncio.create_task(
+            self._subscribe_loop(callback),
+            name="sub-events",
+        )
+        self._tasks[self.TASK_KEY] = task
+        return task
 
-        If ``callback`` is None the subscription still runs (for presence
-        keepalive) but events are discarded.
-        """
-        headers = {
-            "Cookie": self.config.cookie_header,
-            "Origin": self.config.instance,
-        }
-
-        logger.info("Connecting instance subscription")
-
-        async with websockets.connect(
-            self.config.ws_url,
-            subprotocols=["graphql-transport-ws"],
-            additional_headers=headers,
-        ) as ws:
-            await ws.send(json.dumps({"type": "connection_init"}))
-            ack = json.loads(await ws.recv())
-            if ack.get("type") != "connection_ack":
-                raise RuntimeError(f"Expected connection_ack, got: {ack}")
-
-            await ws.send(json.dumps({
-                "id": "instance",
-                "type": "subscribe",
-                "payload": {"query": INSTANCE_EVENTS_QUERY},
-            }))
-            logger.info("Instance subscription active (presence online)")
-
-            async for raw in ws:
-                msg = json.loads(raw)
-                msg_type = msg.get("type")
-
-                if msg_type == "next" and callback is not None:
-                    try:
-                        event_data = msg["payload"]["data"]["myInstanceEvents"]
-                        event = parse_instance_event(event_data)
-                        await callback(event)
-                    except Exception:
-                        logger.exception("Error processing instance event")
-
-                elif msg_type == "error":
-                    logger.error("Instance subscription error: %s", msg.get("payload"))
-
-                elif msg_type == "complete":
-                    logger.info("Instance subscription completed by server")
-                    break
-
-                elif msg_type == "ping":
-                    await ws.send(json.dumps({"type": "pong"}))
-
-    async def _instance_subscribe_loop(
-        self,
-        callback: Callable[[RoomEvent], Awaitable[None]] | None,
-    ) -> None:
-        """Keep instance subscription alive with auto-reconnect."""
-        backoff = 1.0
-
-        while True:
-            try:
-                await self._run_instance_subscription(callback)
-            except asyncio.CancelledError:
-                logger.info("Instance subscription cancelled")
-                return
-            except Exception:
-                logger.exception(
-                    "Instance subscription error, reconnecting in %.1fs", backoff
-                )
-                await asyncio.sleep(backoff)
-                backoff = min(backoff * 2, 60.0)
-            else:
-                await asyncio.sleep(backoff)
-                backoff = min(backoff * 2, 60.0)
+    # --- Backward-compat shims ---
 
     def start_server(
         self,
         callback: Callable[[RoomEvent], Awaitable[None]],
     ) -> asyncio.Task:
-        """Start the global ``myServerEvents`` subscription."""
-        if self.SERVER_TASK_KEY in self._tasks:
-            return self._tasks[self.SERVER_TASK_KEY]
-        task = asyncio.create_task(
-            self._server_subscribe_loop(callback),
-            name="sub-server",
-        )
-        self._tasks[self.SERVER_TASK_KEY] = task
-        return task
+        return self.start(callback)
 
     def start_instance(
         self,
         callback: Callable[[RoomEvent], Awaitable[None]] | None = None,
     ) -> None:
-        """Start the instance subscription.
-
-        If a ``callback`` is provided, instance events are dispatched through
-        it; otherwise the subscription runs purely for presence.
-        """
-        if self.INSTANCE_TASK_KEY not in self._tasks:
-            task = asyncio.create_task(
-                self._instance_subscribe_loop(callback),
-                name="sub-instance",
-            )
-            self._tasks[self.INSTANCE_TASK_KEY] = task
+        if callback is not None:
+            self.start(callback)
 
     async def stop(self) -> None:
-        """Stop all subscriptions."""
+        """Stop the subscription."""
         for task in self._tasks.values():
             task.cancel()
         if self._tasks:

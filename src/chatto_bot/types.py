@@ -229,16 +229,6 @@ class ServerUpdatedEvent:
 
 
 @dataclass
-class UserJoinedServerEvent:
-    user_id: str
-
-
-@dataclass
-class UserLeftServerEvent:
-    user_id: str
-
-
-@dataclass
 class UserProfileUpdatedEvent:
     user_id: str
     display_name: str | None = None
@@ -287,11 +277,6 @@ class NotificationDismissedEvent:
 
 
 @dataclass
-class NewMessageInServerEvent:
-    room_id: str
-
-
-@dataclass
 class RoomMarkedAsReadEvent:
     room_id: str
 
@@ -311,6 +296,11 @@ class RoomLayoutUpdatedEvent:
 @dataclass
 class SessionTerminatedEvent:
     reason: str | None = None
+
+
+@dataclass
+class HeartbeatEvent:
+    alive: bool = True
 
 
 # --- Catch-all for unknown server events ---
@@ -357,8 +347,6 @@ InstanceInnerEvent = (
     | UserCreatedEvent
     | UserDeletedEvent
     | ServerUpdatedEvent
-    | UserJoinedServerEvent
-    | UserLeftServerEvent
     | UserProfileUpdatedEvent
     | ServerUserPreferencesUpdatedEvent
     | NotificationLevelChangedEvent
@@ -366,11 +354,11 @@ InstanceInnerEvent = (
     | NewDirectMessageNotificationEvent
     | NotificationCreatedEvent
     | NotificationDismissedEvent
-    | NewMessageInServerEvent
     | RoomMarkedAsReadEvent
     | ThreadFollowChangedEvent
     | RoomLayoutUpdatedEvent
     | SessionTerminatedEvent
+    | HeartbeatEvent
 )
 
 # Kept under the historical name for backward compat with downstream code.
@@ -404,8 +392,6 @@ _GRAPHQL_TO_EVENT: dict[str, type] = {
     "UserCreatedEvent": UserCreatedEvent,
     "UserDeletedEvent": UserDeletedEvent,
     "ServerUpdatedEvent": ServerUpdatedEvent,
-    "UserJoinedServerEvent": UserJoinedServerEvent,
-    "UserLeftServerEvent": UserLeftServerEvent,
     "UserProfileUpdatedEvent": UserProfileUpdatedEvent,
     "ServerUserPreferencesUpdatedEvent": ServerUserPreferencesUpdatedEvent,
     "NotificationLevelChangedEvent": NotificationLevelChangedEvent,
@@ -413,11 +399,11 @@ _GRAPHQL_TO_EVENT: dict[str, type] = {
     "NewDirectMessageNotificationEvent": NewDirectMessageNotificationEvent,
     "NotificationCreatedEvent": NotificationCreatedEvent,
     "NotificationDismissedEvent": NotificationDismissedEvent,
-    "NewMessageInServerEvent": NewMessageInServerEvent,
     "RoomMarkedAsReadEvent": RoomMarkedAsReadEvent,
     "ThreadFollowChangedEvent": ThreadFollowChangedEvent,
     "RoomLayoutUpdatedEvent": RoomLayoutUpdatedEvent,
     "SessionTerminatedEvent": SessionTerminatedEvent,
+    "HeartbeatEvent": HeartbeatEvent,
 }
 
 # snake_case event name -> dataclass (also the public handler-registration key)
@@ -446,8 +432,6 @@ EVENT_NAME_TO_TYPE: dict[str, type] = {
     "user_created": UserCreatedEvent,
     "user_deleted": UserDeletedEvent,
     "server_updated": ServerUpdatedEvent,
-    "user_joined_server": UserJoinedServerEvent,
-    "user_left_server": UserLeftServerEvent,
     "user_profile_updated": UserProfileUpdatedEvent,
     "server_user_preferences_updated": ServerUserPreferencesUpdatedEvent,
     "notification_level_changed": NotificationLevelChangedEvent,
@@ -455,11 +439,11 @@ EVENT_NAME_TO_TYPE: dict[str, type] = {
     "new_direct_message_notification": NewDirectMessageNotificationEvent,
     "notification_created": NotificationCreatedEvent,
     "notification_dismissed": NotificationDismissedEvent,
-    "new_message_in_server": NewMessageInServerEvent,
     "room_marked_as_read": RoomMarkedAsReadEvent,
     "thread_follow_changed": ThreadFollowChangedEvent,
     "room_layout_updated": RoomLayoutUpdatedEvent,
     "session_terminated": SessionTerminatedEvent,
+    "heartbeat": HeartbeatEvent,
     "unknown": UnknownEvent,
 }
 
@@ -573,6 +557,7 @@ def _parse_link_preview(data: dict) -> LinkPreview:
 # before parsing so the dataclass fields stay clean.
 _FIELD_ALIASES: dict[str, str] = {
     "nlcRoomId": "roomId",
+    "utThreadRootEventId": "threadRootEventId",
 }
 
 
@@ -614,8 +599,12 @@ def _parse_inner_event(data: dict) -> EventType:
     return cls(**kwargs)
 
 
-def parse_room_event(data: dict) -> RoomEvent:
-    """Parse a wrapper from the global subscription (``myServerEvents``)."""
+def parse_my_event(data: dict) -> RoomEvent:
+    """Parse a wrapper from the global subscription (``myEvents``).
+
+    The wrapper carries id, createdAt, actor — same shape regardless of
+    whether the inner event is room-scoped or server-wide.
+    """
     event_data = data.get("event", {})
     actor_data = data.get("actor")
 
@@ -629,30 +618,18 @@ def parse_room_event(data: dict) -> RoomEvent:
     )
 
 
-def parse_space_event(data: dict, space_id: str = "") -> RoomEvent:
-    """Backward-compat wrapper around :func:`parse_room_event`.
+# Backward-compat aliases — same parser, different historical names.
+parse_room_event = parse_my_event
 
-    ``space_id`` is accepted for API compatibility but ignored — the server
-    no longer carries it on the wrapper or inner events.
-    """
-    return parse_room_event(data)
+
+def parse_space_event(data: dict, space_id: str = "") -> RoomEvent:
+    """Backward-compat wrapper around :func:`parse_my_event`."""
+    return parse_my_event(data)
 
 
 def parse_instance_event(data: dict) -> RoomEvent:
-    """Parse a wrapper from the instance subscription (``myInstanceEvents``).
-
-    Instance events have no ``id``, ``createdAt`` or wrapper actor; the
-    inner event carries any relevant context.
-    """
-    event_data = data.get("event", {})
-    return RoomEvent(
-        id="",
-        created_at="",
-        actor_id=data.get("actorId", ""),
-        space_id="",
-        event=_parse_inner_event(event_data),
-        actor=None,
-    )
+    """Backward-compat wrapper around :func:`parse_my_event`."""
+    return parse_my_event(data)
 
 
 def event_name(event: EventType) -> str:
