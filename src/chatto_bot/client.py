@@ -86,11 +86,11 @@ class Client:
     # --- Convenience methods ---
 
     async def me(self) -> dict | None:
-        """Get the current authenticated user."""
+        """Get the current authenticated user (now reached via ``viewer``)."""
         data = await self.query(
-            "{ me { id login displayName avatarUrl presenceStatus } }"
+            "{ viewer { user { id login displayName avatarUrl presenceStatus } } }"
         )
-        return data.get("me")
+        return ((data.get("viewer") or {}).get("user")) or None
 
     async def update_presence(self, status: str = "ONLINE") -> bool:
         """Set the bot's presence status."""
@@ -252,15 +252,16 @@ class Client:
                         viewerCanPostMessage
                     }
                 }
-                me {
-                    rooms { id }
+                viewer {
+                    user { rooms { id } }
                 }
             }
             """
         )
         server = data.get("server") or {}
         rooms = [r for r in (server.get("rooms") or []) if not r.get("archived")]
-        joined_ids = {r["id"] for r in (data.get("me") or {}).get("rooms", [])}
+        viewer_user = ((data.get("viewer") or {}).get("user")) or {}
+        joined_ids = {r["id"] for r in (viewer_user.get("rooms") or [])}
         for r in rooms:
             r["joined"] = r["id"] in joined_ids
         return rooms
@@ -310,7 +311,7 @@ class Client:
             "limit": limit,
         }
         params = "$roomId: ID!, $limit: Int"
-        args = "roomId: $roomId, limit: $limit"
+        args = "limit: $limit"
         if before is not None:
             params += ", $before: String"
             args += ", before: $before"
@@ -323,15 +324,18 @@ class Client:
         data = await self.query(
             ROOM_EVENT_FRAGMENT + f"""
             query RoomEvents({params}) {{
-                roomEvents({args}) {{
-                    events {{ ...RoomEventFields }}
-                    hasOlder hasNewer
+                room(roomId: $roomId) {{
+                    events({args}) {{
+                        events {{ ...RoomEventFields }}
+                        hasOlder hasNewer
+                    }}
                 }}
             }}
             """,
             variables,
         )
-        return data.get("roomEvents") or {"events": [], "hasOlder": False, "hasNewer": False}
+        room = data.get("room") or {}
+        return room.get("events") or {"events": [], "hasOlder": False, "hasNewer": False}
 
     async def get_event(
         self, space_id: str, room_id: str, event_id: str
@@ -341,11 +345,11 @@ class Client:
         data = await self.query(
             ROOM_EVENT_FRAGMENT + """
             query GetEvent($roomId: ID!, $eventId: ID!) {
-                roomEventByEventId(roomId: $roomId, eventId: $eventId) {
-                    ...RoomEventFields
+                room(roomId: $roomId) {
+                    event(eventId: $eventId) { ...RoomEventFields }
                 }
             }
             """,
             {"roomId": room_id, "eventId": event_id},
         )
-        return data.get("roomEventByEventId")
+        return ((data.get("room") or {}).get("event"))
