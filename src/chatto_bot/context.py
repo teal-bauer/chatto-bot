@@ -104,7 +104,7 @@ class Context:
         """Fetch the current state of a message.
 
         Useful inside a ``message_updated`` handler, since the update event
-        carries only the event id — call ``await ctx.fetch_message()`` to
+        carries only the event id. Call ``await ctx.fetch_message()`` to
         retrieve the new body, attachments, reactions, etc.
 
         If ``event_id`` is omitted, falls back to the inner event's

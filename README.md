@@ -24,19 +24,13 @@ Write a bot:
 from chatto_bot import Bot, Context
 
 bot = Bot(
-    instance="https://dev.chatto.run",
-    spaces=["SjH0ry5SFndJrZy"],
+    instance="https://chat.chatto.run",
     prefix="!",
 )
 
 @bot.command(desc="Check if the bot is alive")
 async def ping(ctx: Context):
     await ctx.reply("Pong!")
-
-@bot.middleware
-async def ignore_self(ctx, next):
-    if ctx.actor and bot.user and ctx.actor.id != bot.user.id:
-        await next()
 
 bot.run()
 ```
@@ -109,15 +103,37 @@ async def log_commands(ctx, next):
 
 ## Configuration
 
-Environment variables (or `.env` file):
+Three sources, in order of precedence: explicit kwargs to `Bot(...)`, environment variables (and `.env`), then a YAML file.
+
+Environment variables:
 
 | Variable | Description |
 |----------|-------------|
-| `CHATTO_SESSION` | Session cookie value (required) |
-| `CHATTO_INSTANCE` | Instance URL (default: `https://dev.chatto.run`) |
-| `CHATTO_PREFIX` | Command prefix (default: `!`) |
+| `CHATTO_SESSION` | Session cookie value. Required unless `CHATTO_EMAIL` + `CHATTO_PASSWORD` are set. |
+| `CHATTO_EMAIL` / `CHATTO_PASSWORD` | Credentials for password login. The bot exchanges them for a session cookie at startup. |
+| `CHATTO_INSTANCE` | Instance URL (default: `https://dev.chatto.run`). |
+| `CHATTO_PREFIX` | Command prefix (default: `!`). |
+| `CHATTO_ROOMS` | Comma-separated allowlist of room IDs. Empty = all rooms. |
+| `CHATTO_ADMINS` | Comma-separated login names allowed to invoke `admin=True` commands. |
+| `CHATTO_DMS` | `false` / `0` / `no` disables DM handling. Default: enabled. |
 
-Or pass everything programmatically to `Bot(...)`.
+YAML config (pass via `Bot(config_path="chatto-bot.yaml")`):
+
+```yaml
+instance: https://chat.chatto.run
+prefix: "!"
+dms: true
+
+admins:
+  - alice
+  - bob
+
+extensions:
+  - plugins.admin
+  - plugins.remind
+```
+
+Keep secrets (`session`, `email`, `password`) out of YAML. Use `.env` or environment variables instead.
 
 ## License
 

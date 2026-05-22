@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 #   graphql-go's selection-set merge check.
 # - ``MessagePostedEvent.threadRootEventId`` and
 #   ``UserTypingEvent.threadRootEventId`` are nullable, but
-#   ``ThreadFollowChangedEvent.threadRootEventId`` is non-null — the
+#   ``ThreadFollowChangedEvent.threadRootEventId`` is non-null. The
 #   nullable ones are aliased to ``mpThreadRootEventId`` /
 #   ``utThreadRootEventId`` for the same reason.
 MY_EVENTS_QUERY = """\
@@ -189,7 +189,7 @@ class SubscriptionManager:
                 elif msg_type == "ping":
                     await ws.send(json.dumps({"type": "pong"}))
 
-    # A connection that survives this long counts as "healthy" — reset
+    # A connection that survives this long counts as "healthy": reset
     # backoff so a later disconnect reconnects fast instead of inheriting
     # a 60-second wait from some earlier outage.
     HEALTHY_THRESHOLD = 30.0

@@ -602,8 +602,8 @@ def _parse_inner_event(data: dict) -> EventType:
 def parse_my_event(data: dict) -> RoomEvent:
     """Parse a wrapper from the global subscription (``myEvents``).
 
-    The wrapper carries id, createdAt, actor — same shape regardless of
-    whether the inner event is room-scoped or server-wide.
+    The wrapper carries id, createdAt, and actor with the same shape
+    regardless of whether the inner event is room-scoped or server-wide.
     """
     event_data = data.get("event", {})
     actor_data = data.get("actor")

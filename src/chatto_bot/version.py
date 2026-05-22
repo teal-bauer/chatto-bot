@@ -20,7 +20,7 @@ def _get_version() -> str:
     except ImportError:
         pass
 
-    # 2. VERSION file (deploy artifact — takes priority over stale .git)
+    # 2. VERSION file (deploy artifact, takes priority over stale .git)
     for path in (Path("VERSION"), Path(__file__).parent.parent.parent / "VERSION"):
         try:
             return path.read_text().strip()

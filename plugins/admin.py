@@ -1,4 +1,4 @@
-"""Admin commands — restricted to configured admin users."""
+"""Admin commands, restricted to configured admin users."""
 
 from __future__ import annotations
 

@@ -283,7 +283,7 @@ class Bot:
         Cursor dedup applies to per-room events only (instance events have
         no created_at and aren't part of a replay-able stream). The cursor
         only advances *after* a successful dispatch or a deterministic
-        filter skip — if middleware raises, the event replays on next
+        filter skip. If middleware raises, the event replays on next
         start instead of being silently dropped.
         """
         if event.created_at:
@@ -293,7 +293,7 @@ class Bot:
 
         room_id = getattr(event.event, "room_id", None) or ""
 
-        # Deterministic skips — these decisions don't change on retry, so
+        # Deterministic skips: these decisions don't change on retry, so
         # the cursor advances even though no handler runs.
         skipped = (
             (self.config.rooms and room_id and room_id not in self.config.rooms)
@@ -380,11 +380,11 @@ class Bot:
             try:
                 self._state_flush_task = asyncio.create_task(self._flush_state_later())
             except RuntimeError:
-                # No event loop — fall back to sync write
+                # No event loop, fall back to sync write
                 self._save_state()
 
     async def _flush_state_later(self) -> None:
-        """Debounced state flush — waits a bit then writes once."""
+        """Debounced state flush. Waits a bit then writes once."""
         await asyncio.sleep(5.0)
         if self._state_dirty:
             await asyncio.get_running_loop().run_in_executor(None, self._save_state)
@@ -552,7 +552,7 @@ class Bot:
 
         me_data = await self.client.me()
         if not me_data:
-            logger.error("Authentication failed after reload — check session")
+            logger.error("Authentication failed after reload, check session")
             return
 
         self.user = User(

@@ -1,4 +1,4 @@
-"""Timed reminders plugin — set, list, and cancel reminders."""
+"""Timed reminders plugin. Set, list, and cancel reminders."""
 
 from __future__ import annotations
 
@@ -78,7 +78,7 @@ def _parse_remind_args(text: str) -> tuple[str, datetime | None, str]:
 
     now = datetime.now(timezone.utc)
 
-    # "me to <msg>" with no time spec — default to next morning
+    # "me to <msg>" with no time spec: default to next morning
     if rest and not re.match(r"(?:on|at|in)\s", rest, re.IGNORECASE) and not re.match(rf"(?:{_NAMED_TIMES_RE})\s", rest, re.IGNORECASE):
         h, m = _NAMED_TIMES["morning"]
         due = now.replace(hour=h, minute=m, second=0, microsecond=0)
