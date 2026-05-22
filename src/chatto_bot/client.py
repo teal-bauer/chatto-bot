@@ -147,13 +147,13 @@ class Client:
         del space_id
         data = await self.mutate(
             """
-            mutation EditMessage($input: EditMessageInput!) {
-                editMessage(input: $input)
+            mutation UpdateMessage($input: UpdateMessageInput!) {
+                updateMessage(input: $input)
             }
             """,
             {"input": {"roomId": room_id, "eventId": event_id, "body": body}},
         )
-        return data["editMessage"]
+        return data["updateMessage"]
 
     async def delete_message(
         self, space_id: str, room_id: str, event_id: str
@@ -217,12 +217,12 @@ class Client:
         data = await self.mutate(
             """
             mutation JoinRoom($input: JoinRoomInput!) {
-                joinRoom(input: $input)
+                joinRoom(input: $input) { id }
             }
             """,
             {"input": {"roomId": room_id}},
         )
-        return data["joinRoom"]
+        return bool((data.get("joinRoom") or {}).get("id"))
 
     async def leave_room(self, space_id: str, room_id: str) -> bool:
         del space_id

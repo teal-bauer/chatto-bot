@@ -79,7 +79,7 @@ def make_event(
     space_id: str = "S1",
     room_id: str = "R1",
     event_id: str = "E1",
-    in_thread: str | None = None,
+    thread_root_event_id: str | None = None,
 ) -> SpaceEvent:
     """Create a SpaceEvent for testing."""
     return SpaceEvent(
@@ -90,7 +90,7 @@ def make_event(
         event=MessagePostedEvent(
             room_id=room_id,
             body=body,
-            in_thread=in_thread,
+            thread_root_event_id=thread_root_event_id,
         ),
         actor=User(
             id=actor_id,

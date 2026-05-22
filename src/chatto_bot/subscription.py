@@ -21,9 +21,15 @@ logger = logging.getLogger(__name__)
 # wrapping a union (``ServerEventType``) covering every room- and server-level
 # event the viewer can see, plus a periodic ``HeartbeatEvent`` keepalive.
 #
-# Note on the ``NotificationLevelChangedEvent`` alias: its ``roomId`` is
-# nullable while every other event's ``roomId`` is non-null. Without aliasing
-# graphql-go refuses to merge the selection set.
+# Notes on aliases:
+# - ``NotificationLevelChangedEvent.roomId`` is nullable while every other
+#   event's ``roomId`` is non-null. Aliased to ``nlcRoomId`` to dodge
+#   graphql-go's selection-set merge check.
+# - ``MessagePostedEvent.threadRootEventId`` and
+#   ``UserTypingEvent.threadRootEventId`` are nullable, but
+#   ``ThreadFollowChangedEvent.threadRootEventId`` is non-null — the
+#   nullable ones are aliased to ``mpThreadRootEventId`` /
+#   ``utThreadRootEventId`` for the same reason.
 MY_EVENTS_QUERY = """\
 subscription MyEvents {
     myEvents {
@@ -45,7 +51,7 @@ subscription MyEvents {
                 linkPreview {
                     url title description imageUrl siteName embedType embedId
                 }
-                inReplyTo inThread
+                inReplyTo mpThreadRootEventId: threadRootEventId
                 reactions { emoji count users { id login displayName } hasReacted }
                 updatedAt replyCount lastReplyAt
                 echoOfEventId echoFromThreadRootEventId
@@ -109,7 +115,8 @@ subscription MyEvents {
             ... on ThreadFollowChangedEvent {
                 roomId threadRootEventId isFollowing
             }
-            ... on RoomLayoutUpdatedEvent { changed }
+            ... on RoomGroupsUpdatedEvent { changed }
+            ... on MentionStatusClearedEvent { roomId }
             ... on SessionTerminatedEvent { reason }
             ... on HeartbeatEvent { alive }
         }

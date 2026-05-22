@@ -79,8 +79,8 @@ class Context:
     def in_thread(self) -> str | None:
         """The thread root event ID if this event is in a thread."""
         inner = self.event.event
-        if isinstance(inner, MessagePostedEvent) and inner.in_thread:
-            return inner.in_thread
+        if isinstance(inner, MessagePostedEvent) and inner.thread_root_event_id:
+            return inner.thread_root_event_id
         return None
 
     async def reply(self, body: str, **kwargs: Any) -> dict:
@@ -100,8 +100,8 @@ class Context:
         inner = self.event.event
         # Determine the thread root event ID
         thread_root = self.event.id
-        if isinstance(inner, MessagePostedEvent) and inner.in_thread:
-            thread_root = inner.in_thread
+        if isinstance(inner, MessagePostedEvent) and inner.thread_root_event_id:
+            thread_root = inner.thread_root_event_id
 
         return await self.bot.client.post_message(
             self.space_id, self.room_id, body, in_reply_to=thread_root

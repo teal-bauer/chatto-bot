@@ -90,7 +90,7 @@ class MessagePostedEvent:
     attachments: list[Attachment] = field(default_factory=list)
     link_preview: LinkPreview | None = None
     in_reply_to: str | None = None
-    in_thread: str | None = None
+    thread_root_event_id: str | None = None
     reactions: list[Reaction] = field(default_factory=list)
     updated_at: str | None = None
     reply_count: int = 0
@@ -289,8 +289,13 @@ class ThreadFollowChangedEvent:
 
 
 @dataclass
-class RoomLayoutUpdatedEvent:
+class RoomGroupsUpdatedEvent:
     changed: bool = False
+
+
+@dataclass
+class MentionStatusClearedEvent:
+    room_id: str
 
 
 @dataclass
@@ -356,7 +361,8 @@ InstanceInnerEvent = (
     | NotificationDismissedEvent
     | RoomMarkedAsReadEvent
     | ThreadFollowChangedEvent
-    | RoomLayoutUpdatedEvent
+    | RoomGroupsUpdatedEvent
+    | MentionStatusClearedEvent
     | SessionTerminatedEvent
     | HeartbeatEvent
 )
@@ -401,7 +407,8 @@ _GRAPHQL_TO_EVENT: dict[str, type] = {
     "NotificationDismissedEvent": NotificationDismissedEvent,
     "RoomMarkedAsReadEvent": RoomMarkedAsReadEvent,
     "ThreadFollowChangedEvent": ThreadFollowChangedEvent,
-    "RoomLayoutUpdatedEvent": RoomLayoutUpdatedEvent,
+    "RoomGroupsUpdatedEvent": RoomGroupsUpdatedEvent,
+    "MentionStatusClearedEvent": MentionStatusClearedEvent,
     "SessionTerminatedEvent": SessionTerminatedEvent,
     "HeartbeatEvent": HeartbeatEvent,
 }
@@ -441,7 +448,8 @@ EVENT_NAME_TO_TYPE: dict[str, type] = {
     "notification_dismissed": NotificationDismissedEvent,
     "room_marked_as_read": RoomMarkedAsReadEvent,
     "thread_follow_changed": ThreadFollowChangedEvent,
-    "room_layout_updated": RoomLayoutUpdatedEvent,
+    "room_groups_updated": RoomGroupsUpdatedEvent,
+    "mention_status_cleared": MentionStatusClearedEvent,
     "session_terminated": SessionTerminatedEvent,
     "heartbeat": HeartbeatEvent,
     "unknown": UnknownEvent,
@@ -558,6 +566,7 @@ def _parse_link_preview(data: dict) -> LinkPreview:
 _FIELD_ALIASES: dict[str, str] = {
     "nlcRoomId": "roomId",
     "utThreadRootEventId": "threadRootEventId",
+    "mpThreadRootEventId": "threadRootEventId",
 }
 
 

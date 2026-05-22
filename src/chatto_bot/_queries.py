@@ -25,7 +25,7 @@ fragment RoomEventFields on RoomEvent {
             linkPreview {
                 url title description imageUrl siteName embedType embedId
             }
-            inReplyTo inThread
+            inReplyTo threadRootEventId
             reactions { emoji count users { id login displayName } hasReacted }
             updatedAt replyCount lastReplyAt
             echoOfEventId echoFromThreadRootEventId
