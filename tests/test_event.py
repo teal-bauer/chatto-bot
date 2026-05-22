@@ -29,16 +29,6 @@ class TestEventHandlerMatches:
         ctx = make_ctx(bot, room_id="R2")
         assert not self.handler.matches(ctx)
 
-    def test_space_filter_match(self, bot):
-        self.handler.filters = {"space": "S1"}
-        ctx = make_ctx(bot, space_id="S1")
-        assert self.handler.matches(ctx)
-
-    def test_space_filter_mismatch(self, bot):
-        self.handler.filters = {"space": "S1"}
-        ctx = make_ctx(bot, space_id="S2")
-        assert not self.handler.matches(ctx)
-
     def test_actor_filter_match(self, bot):
         self.handler.filters = {"actor": "Uuser"}
         ctx = make_ctx(bot, actor_id="Uuser")

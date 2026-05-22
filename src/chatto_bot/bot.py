@@ -23,7 +23,6 @@ from .subscription import SubscriptionManager
 from .types import (
     MessagePostedEvent,
     RoomEvent,
-    SpaceEvent,
     User,
     event_name,
     parse_room_event,
@@ -279,28 +278,30 @@ class Bot:
     # --- Event dispatching ---
 
     async def _dispatch(self, event: RoomEvent) -> None:
-        """Dispatch an event through middleware and to handlers."""
-        # Cursor dedup applies to per-room events only (instance events have
-        # no created_at and aren't part of a replay-able stream).
+        """Dispatch an event through middleware and to handlers.
+
+        Cursor dedup applies to per-room events only (instance events have
+        no created_at and aren't part of a replay-able stream). The cursor
+        only advances *after* a successful dispatch or a deterministic
+        filter skip — if middleware raises, the event replays on next
+        start instead of being silently dropped.
+        """
         if event.created_at:
             cursor_ts = self._cursor.get(_GLOBAL_CURSOR_KEY, "")
             if cursor_ts and event.created_at <= cursor_ts:
                 return
-            self._advance_cursor(event.created_at)
-            self._mark_state_dirty()
 
         room_id = getattr(event.event, "room_id", None) or ""
 
-        # Skip events from rooms not in the allowlist (if configured)
-        if self.config.rooms and room_id and room_id not in self.config.rooms:
-            return
-
-        # Respect the ``dms`` config toggle (uses cached room types).
-        if not self.config.dms and room_id and self._room_types.get(room_id) == "DM":
-            return
-
-        # Ignore the bot's own events to prevent infinite loops
-        if self.user and event.actor_id == self.user.id:
+        # Deterministic skips — these decisions don't change on retry, so
+        # the cursor advances even though no handler runs.
+        skipped = (
+            (self.config.rooms and room_id and room_id not in self.config.rooms)
+            or (not self.config.dms and room_id and self._room_types.get(room_id) == "DM")
+            or (self.user and event.actor_id == self.user.id)
+        )
+        if skipped:
+            self._commit_cursor(event)
             return
 
         ctx = Context(self, event)
@@ -322,6 +323,14 @@ class Bot:
                         )
 
         await self._middleware.run(ctx, handle)
+        self._commit_cursor(event)
+
+    def _commit_cursor(self, event: RoomEvent) -> None:
+        """Advance the cursor past this event and schedule a flush."""
+        if not event.created_at:
+            return
+        self._advance_cursor(event.created_at)
+        self._mark_state_dirty()
 
     async def _dispatch_command(self, ctx: Context, body: str) -> None:
         """Parse and dispatch a command from a message body."""
@@ -378,7 +387,7 @@ class Bot:
         """Debounced state flush — waits a bit then writes once."""
         await asyncio.sleep(5.0)
         if self._state_dirty:
-            await asyncio.get_event_loop().run_in_executor(None, self._save_state)
+            await asyncio.get_running_loop().run_in_executor(None, self._save_state)
 
     def _save_state(self) -> None:
         self._state_dirty = False
@@ -509,20 +518,6 @@ class Bot:
         await self._replay_missed(rooms)
 
         self._subscriptions.start(self._dispatch)
-
-    async def subscribe_space(self, space_id: str) -> None:
-        """No-op kept for backward compat.
-
-        The current Chatto schema exposes a single global event stream
-        (``myServerEvents``); per-space subscriptions no longer exist.
-        """
-        del space_id
-        logger.debug("subscribe_space is a no-op under the current schema")
-
-    async def unsubscribe_space(self, space_id: str) -> None:
-        """No-op kept for backward compat. See :meth:`subscribe_space`."""
-        del space_id
-        logger.debug("unsubscribe_space is a no-op under the current schema")
 
     async def close(self) -> None:
         """Gracefully shut down (idempotent)."""

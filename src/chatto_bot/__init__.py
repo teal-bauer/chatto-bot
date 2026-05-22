@@ -15,7 +15,6 @@ from .types import (
     LinkPreview,
     Reaction,
     RoomEvent,
-    SpaceEvent,  # backward-compat alias for RoomEvent
     User,
     VideoProcessing,
     VideoProcessingVariant,
@@ -23,7 +22,6 @@ from .types import (
     EventType,
     InstanceInnerEvent,
     RoomInnerEvent,
-    SpaceInnerEvent,  # backward-compat alias for RoomInnerEvent
     # Catch-all
     UnknownEvent,
     # Room (server-wide) inner events
@@ -85,7 +83,6 @@ __all__ = [
     "LinkPreview",
     "Reaction",
     "RoomEvent",
-    "SpaceEvent",
     "User",
     "VideoProcessing",
     "VideoProcessingVariant",
@@ -93,7 +90,6 @@ __all__ = [
     "EventType",
     "InstanceInnerEvent",
     "RoomInnerEvent",
-    "SpaceInnerEvent",
     "UnknownEvent",
     # Room (server-wide) inner events
     "CallParticipantJoinedEvent",

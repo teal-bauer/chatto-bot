@@ -29,8 +29,6 @@ class EventHandler:
         for key, value in self.filters.items():
             if key == "room" and ctx.room_id != value:
                 return False
-            if key == "space" and ctx.space_id != value:
-                return False
             if key == "actor" and (not ctx.actor or ctx.actor.id != value):
                 return False
         return True
@@ -40,7 +38,6 @@ def on_event(
     event_type: str,
     *,
     room: str | None = None,
-    space: str | None = None,
     actor: str | None = None,
 ) -> Callable:
     """Decorator to register a raw event handler.
@@ -53,8 +50,6 @@ def on_event(
         filters: dict[str, str] = {}
         if room:
             filters["room"] = room
-        if space:
-            filters["space"] = space
         if actor:
             filters["actor"] = actor
 

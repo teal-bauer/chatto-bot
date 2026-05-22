@@ -187,14 +187,12 @@ class Remind(Cog):
 
     # --- User resolution ---
 
-    async def _resolve_user(self, name: str, space_id: str) -> dict | None:
-        """Resolve a display name to a user dict via space member search."""
-        if space_id == "DM":
-            return None
+    async def _resolve_user(self, name: str) -> dict | None:
+        """Resolve a display name to a user dict via server member search."""
         try:
-            members = await self.bot.client.search_space_members(space_id, name)
+            members = await self.bot.client.search_members(name)
         except Exception:
-            logger.debug("Member search failed for %r in %s", name, space_id)
+            logger.debug("Member search failed for %r", name)
             return None
         # Case-insensitive match on displayName
         for user in members:
@@ -245,9 +243,9 @@ class Remind(Cog):
             target_display = actor.display_name
             target_login = actor.login
         else:
-            user = await self._resolve_user(target_name, ctx.space_id)
+            user = await self._resolve_user(target_name)
             if not user:
-                await ctx.reply(f"Could not find user `{target_name}` in this space.")
+                await ctx.reply(f"Could not find user `{target_name}`.")
                 return
             target_id = user["id"]
             target_display = user["displayName"]
@@ -259,7 +257,6 @@ class Remind(Cog):
             "target_id": target_id,
             "target_name": target_display,
             "target_login": target_login,
-            "space_id": ctx.space_id,
             "room_id": ctx.room_id,
             "due_at": due_at.isoformat(),
             "message": message,
@@ -361,13 +358,11 @@ class Remind(Cog):
             try:
                 login = r.get("target_login", r["target_name"])
                 msg = f"⏰ @{login} reminder: {r['message']}"
-                await self.bot.client.post_message(
-                    r["space_id"], r["room_id"], msg
-                )
+                await self.bot.client.post_message(r["room_id"], msg)
             except Exception:
                 logger.exception(
-                    "Failed to deliver reminder %s in %s/%s",
-                    r["id"], r["space_id"], r["room_id"],
+                    "Failed to deliver reminder %s in %s",
+                    r["id"], r["room_id"],
                 )
 
         self._save(remaining)

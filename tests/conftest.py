@@ -14,7 +14,7 @@ from chatto_bot.context import Context
 from chatto_bot.middleware import MiddlewareChain
 from chatto_bot.types import (
     MessagePostedEvent,
-    SpaceEvent,
+    RoomEvent,
     User,
 )
 
@@ -24,7 +24,6 @@ def bot_config():
     return BotConfig(
         instance="https://test.example.com",
         prefix="!",
-        spaces=["S1"],
         session="fake-session",
         admins=["admin"],
     )
@@ -76,17 +75,15 @@ def make_event(
     body: str = "hello",
     actor_id: str = "Uuser",
     actor_login: str = "testuser",
-    space_id: str = "S1",
     room_id: str = "R1",
     event_id: str = "E1",
     thread_root_event_id: str | None = None,
-) -> SpaceEvent:
-    """Create a SpaceEvent for testing."""
-    return SpaceEvent(
+) -> RoomEvent:
+    """Create a RoomEvent for testing."""
+    return RoomEvent(
         id=event_id,
         created_at="2026-01-01T00:00:00Z",
         actor_id=actor_id,
-        space_id=space_id,
         event=MessagePostedEvent(
             room_id=room_id,
             body=body,

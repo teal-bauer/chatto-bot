@@ -1,9 +1,8 @@
 """Dataclasses mirroring the Chatto GraphQL schema.
 
-Covers both the global per-server subscription (`myServerEvents`) and the
-instance-wide subscription (`myInstanceEvents`). All inner-event types the
-server emits today are represented; unknown typenames parse to an
-``UnknownEvent`` placeholder so the bot keeps running through API additions.
+Covers every inner-event type emitted by the global ``myEvents`` subscription.
+Unknown typenames parse to an ``UnknownEvent`` placeholder so the bot keeps
+running through API additions.
 """
 
 from __future__ import annotations
@@ -367,9 +366,6 @@ InstanceInnerEvent = (
     | HeartbeatEvent
 )
 
-# Kept under the historical name for backward compat with downstream code.
-SpaceInnerEvent = RoomInnerEvent
-
 EventType = RoomInnerEvent | InstanceInnerEvent | UnknownEvent
 
 
@@ -463,23 +459,18 @@ _TYPE_TO_EVENT_NAME: dict[type, str] = {v: k for k, v in EVENT_NAME_TO_TYPE.item
 
 @dataclass
 class RoomEvent:
-    """Wrapper around an inner event, common to room and instance subscriptions.
+    """Wrapper around an inner event from the global ``myEvents`` stream.
 
-    For room subscription events, all fields are populated. For instance
-    events, ``id`` and ``created_at`` are typically empty and ``actor`` is
-    ``None``.
+    For room-scoped events, all fields are populated. For server-wide
+    notification events, ``id`` and ``created_at`` are typically empty
+    and ``actor`` is ``None``.
     """
 
     actor_id: str
     event: EventType
     id: str = ""
     created_at: str = ""
-    space_id: str = ""  # kept for backward compat with downstream callers
     actor: User | None = None
-
-
-# Backward-compat alias: legacy code uses ``SpaceEvent``.
-SpaceEvent = RoomEvent
 
 
 # --- Parsing helpers ---
@@ -621,24 +612,12 @@ def parse_my_event(data: dict) -> RoomEvent:
         id=data.get("id", ""),
         created_at=data.get("createdAt", ""),
         actor_id=data.get("actorId", ""),
-        space_id="",
         event=_parse_inner_event(event_data),
         actor=_parse_user(actor_data) if actor_data else None,
     )
 
 
-# Backward-compat aliases — same parser, different historical names.
 parse_room_event = parse_my_event
-
-
-def parse_space_event(data: dict, space_id: str = "") -> RoomEvent:
-    """Backward-compat wrapper around :func:`parse_my_event`."""
-    return parse_my_event(data)
-
-
-def parse_instance_event(data: dict) -> RoomEvent:
-    """Backward-compat wrapper around :func:`parse_my_event`."""
-    return parse_my_event(data)
 
 
 def event_name(event: EventType) -> str:

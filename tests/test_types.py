@@ -7,13 +7,10 @@ from chatto_bot.types import (
     RoomArchivedEvent,
     RoomEvent,
     ServerUpdatedEvent,
-    SpaceEvent,
     UnknownEvent,
-    User,
     event_name,
-    parse_instance_event,
+    parse_my_event,
     parse_room_event,
-    parse_space_event,
     _parse_inner_event,
 )
 
@@ -122,24 +119,10 @@ class TestParseRoomEvent:
         se = parse_room_event(data)
         assert se.actor is None
 
-    def test_space_event_alias(self):
-        # parse_space_event remains as a backward-compat wrapper
-        se = parse_space_event(
-            {
-                "id": "E1",
-                "createdAt": "2026-01-01T00:00:00Z",
-                "actorId": "U1",
-                "event": {"__typename": "MessagePostedEvent", "roomId": "R1"},
-            },
-            space_id="S1",
-        )
-        assert isinstance(se, SpaceEvent)
-        assert se.event.room_id == "R1"
 
-
-class TestParseInstanceEvent:
+class TestParseServerWideEvent:
     def test_server_updated(self):
-        wrapper = parse_instance_event(
+        wrapper = parse_my_event(
             {
                 "actorId": "U1",
                 "event": {

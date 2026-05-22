@@ -1,17 +1,10 @@
-"""Context object wrapping a SpaceEvent with convenience methods."""
+"""Context object wrapping a RoomEvent with convenience methods."""
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from .types import (
-    MessagePostedEvent,
-    MessageUpdatedEvent,
-    ReactionAddedEvent,
-    ReactionRemovedEvent,
-    SpaceEvent,
-    User,
-)
+from .types import MessagePostedEvent, RoomEvent, User
 
 if TYPE_CHECKING:
     from .bot import Bot
@@ -24,25 +17,13 @@ class Context:
     like replying, reacting, etc.
     """
 
-    def __init__(self, bot: Bot, event: SpaceEvent) -> None:
+    def __init__(self, bot: Bot, event: RoomEvent) -> None:
         self.bot = bot
         self.event = event
 
     @property
     def actor(self) -> User | None:
         return self.event.actor
-
-    @property
-    def space_id(self) -> str:
-        """Legacy alias — the current schema doesn't carry spaceId on events.
-
-        Returns the wrapper's ``space_id`` if set (kept for downstream code
-        that still passes one around) or an empty string. Most call sites
-        only need :attr:`room_id`.
-        """
-        if self.event.space_id:
-            return self.event.space_id
-        return ""
 
     @property
     def room_id(self) -> str:
@@ -66,13 +47,8 @@ class Context:
         return None
 
     @property
-    def message_body_id(self) -> str | None:
-        """Removed from the API; kept as a no-op for backward compatibility."""
-        return None
-
-    @property
     def event_id(self) -> str:
-        """The SpaceEvent id (used for replies and reactions)."""
+        """The RoomEvent id (used for replies and reactions)."""
         return self.event.id
 
     @property
@@ -87,9 +63,7 @@ class Context:
         """Reply in the same room. If triggered from a thread, replies in that thread."""
         if self.in_thread and "in_reply_to" not in kwargs:
             kwargs["in_reply_to"] = self.in_thread
-        return await self.bot.client.post_message(
-            self.space_id, self.room_id, body, **kwargs
-        )
+        return await self.bot.client.post_message(self.room_id, body, **kwargs)
 
     async def reply_in_thread(self, body: str) -> dict:
         """Reply in the thread of the current message.
@@ -98,42 +72,33 @@ class Context:
         Otherwise, starts a new thread on the current message.
         """
         inner = self.event.event
-        # Determine the thread root event ID
         thread_root = self.event.id
         if isinstance(inner, MessagePostedEvent) and inner.thread_root_event_id:
             thread_root = inner.thread_root_event_id
 
         return await self.bot.client.post_message(
-            self.space_id, self.room_id, body, in_reply_to=thread_root
+            self.room_id, body, in_reply_to=thread_root
         )
 
     async def react(self, emoji: str) -> bool:
         """Add a reaction to the message that triggered this event."""
-        return await self.bot.client.add_reaction(
-            self.space_id, self.room_id, self.event.id, emoji
-        )
+        return await self.bot.client.add_reaction(self.room_id, self.event.id, emoji)
 
     async def unreact(self, emoji: str) -> bool:
         """Remove a reaction from the triggering message."""
-        return await self.bot.client.remove_reaction(
-            self.space_id, self.room_id, self.event.id, emoji
-        )
+        return await self.bot.client.remove_reaction(self.room_id, self.event.id, emoji)
 
     async def edit(self, body: str) -> bool:
         """Edit the bot's own message (only works if the event is the bot's)."""
         if not isinstance(self.event.event, MessagePostedEvent):
             return False
-        return await self.bot.client.edit_message(
-            self.space_id, self.room_id, self.event_id, body
-        )
+        return await self.bot.client.edit_message(self.room_id, self.event_id, body)
 
     async def delete(self) -> bool:
         """Delete the bot's own message."""
         if not isinstance(self.event.event, MessagePostedEvent):
             return False
-        return await self.bot.client.delete_message(
-            self.space_id, self.room_id, self.event_id
-        )
+        return await self.bot.client.delete_message(self.room_id, self.event_id)
 
     async def fetch_message(self, event_id: str | None = None) -> dict | None:
         """Fetch the current state of a message.
@@ -151,4 +116,4 @@ class Context:
             event_id = getattr(inner, "message_event_id", None) or self.event.id
         if not event_id:
             return None
-        return await self.bot.client.get_event(self.space_id, self.room_id, event_id)
+        return await self.bot.client.get_event(self.room_id, event_id)

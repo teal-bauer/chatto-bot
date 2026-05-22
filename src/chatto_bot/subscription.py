@@ -189,31 +189,37 @@ class SubscriptionManager:
                 elif msg_type == "ping":
                     await ws.send(json.dumps({"type": "pong"}))
 
+    # A connection that survives this long counts as "healthy" — reset
+    # backoff so a later disconnect reconnects fast instead of inheriting
+    # a 60-second wait from some earlier outage.
+    HEALTHY_THRESHOLD = 30.0
+
     async def _subscribe_loop(
         self,
         callback: Callable[[RoomEvent], Awaitable[None]],
     ) -> None:
         """Keep the events subscription alive with auto-reconnect."""
         backoff = 1.0
+        loop = asyncio.get_running_loop()
 
         while True:
+            t0 = loop.time()
             try:
                 await self._run_subscription(callback)
+                ended = "ended"
             except asyncio.CancelledError:
                 logger.info("Events subscription cancelled")
                 return
             except Exception:
-                logger.exception(
-                    "Events subscription error, reconnecting in %.1fs", backoff
-                )
-                await asyncio.sleep(backoff)
-                backoff = min(backoff * 2, 60.0)
-            else:
-                logger.warning(
-                    "Events subscription ended, reconnecting in %.1fs", backoff
-                )
-                await asyncio.sleep(backoff)
-                backoff = min(backoff * 2, 60.0)
+                logger.exception("Events subscription error")
+                ended = "errored"
+
+            if loop.time() - t0 >= self.HEALTHY_THRESHOLD:
+                backoff = 1.0
+
+            logger.warning("Events subscription %s, reconnecting in %.1fs", ended, backoff)
+            await asyncio.sleep(backoff)
+            backoff = min(backoff * 2, 60.0)
 
     def start(
         self,
@@ -228,21 +234,6 @@ class SubscriptionManager:
         )
         self._tasks[self.TASK_KEY] = task
         return task
-
-    # --- Backward-compat shims ---
-
-    def start_server(
-        self,
-        callback: Callable[[RoomEvent], Awaitable[None]],
-    ) -> asyncio.Task:
-        return self.start(callback)
-
-    def start_instance(
-        self,
-        callback: Callable[[RoomEvent], Awaitable[None]] | None = None,
-    ) -> None:
-        if callback is not None:
-            self.start(callback)
 
     async def stop(self) -> None:
         """Stop the subscription."""

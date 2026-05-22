@@ -106,18 +106,12 @@ class Client:
 
     async def post_message(
         self,
-        space_id: str,
         room_id: str,
         body: str,
         *,
         in_reply_to: str | None = None,
     ) -> dict:
-        """Post a message and return the wrapper RoomEvent.
-
-        ``space_id`` is accepted for backward compatibility but ignored by
-        the current Chatto schema.
-        """
-        del space_id
+        """Post a message and return the wrapper RoomEvent."""
         variables: dict[str, Any] = {
             "input": {
                 "roomId": room_id,
@@ -137,14 +131,7 @@ class Client:
         )
         return data["postMessage"]
 
-    async def edit_message(
-        self,
-        space_id: str,
-        room_id: str,
-        event_id: str,
-        body: str,
-    ) -> bool:
-        del space_id
+    async def edit_message(self, room_id: str, event_id: str, body: str) -> bool:
         data = await self.mutate(
             """
             mutation UpdateMessage($input: UpdateMessageInput!) {
@@ -155,10 +142,7 @@ class Client:
         )
         return data["updateMessage"]
 
-    async def delete_message(
-        self, space_id: str, room_id: str, event_id: str
-    ) -> bool:
-        del space_id
+    async def delete_message(self, room_id: str, event_id: str) -> bool:
         data = await self.mutate(
             """
             mutation DeleteMessage($input: DeleteMessageInput!) {
@@ -170,9 +154,8 @@ class Client:
         return data["deleteMessage"]
 
     async def add_reaction(
-        self, space_id: str, room_id: str, message_event_id: str, emoji: str
+        self, room_id: str, message_event_id: str, emoji: str
     ) -> bool:
-        del space_id
         data = await self.mutate(
             """
             mutation AddReaction($input: AddReactionInput!) {
@@ -184,9 +167,8 @@ class Client:
         return data["addReaction"]
 
     async def remove_reaction(
-        self, space_id: str, room_id: str, message_event_id: str, emoji: str
+        self, room_id: str, message_event_id: str, emoji: str
     ) -> bool:
-        del space_id
         data = await self.mutate(
             """
             mutation RemoveReaction($input: RemoveReactionInput!) {
@@ -212,8 +194,7 @@ class Client:
         )
         return data["startDM"]
 
-    async def join_room(self, space_id: str, room_id: str) -> bool:
-        del space_id
+    async def join_room(self, room_id: str) -> bool:
         data = await self.mutate(
             """
             mutation JoinRoom($input: JoinRoomInput!) {
@@ -224,8 +205,7 @@ class Client:
         )
         return bool((data.get("joinRoom") or {}).get("id"))
 
-    async def leave_room(self, space_id: str, room_id: str) -> bool:
-        del space_id
+    async def leave_room(self, room_id: str) -> bool:
         data = await self.mutate(
             """
             mutation LeaveRoom($input: LeaveRoomInput!) {
@@ -236,13 +216,8 @@ class Client:
         )
         return data["leaveRoom"]
 
-    async def get_rooms(self, space_id: str = "") -> list[dict]:
-        """Return all rooms visible to the bot, with joined/type metadata.
-
-        ``space_id`` is accepted for backward compatibility but ignored —
-        the API no longer scopes rooms by space.
-        """
-        del space_id
+    async def get_rooms(self) -> list[dict]:
+        """Return all rooms visible to the bot, with joined/type metadata."""
         data = await self.query(
             """
             {
@@ -283,16 +258,8 @@ class Client:
         server = data.get("server") or {}
         return (server.get("members") or {}).get("users") or []
 
-    async def search_space_members(
-        self, space_id: str, search: str, limit: int = 5
-    ) -> list[dict]:
-        """Backward-compat wrapper around :meth:`search_members`."""
-        del space_id
-        return await self.search_members(search, limit)
-
     async def get_room_events(
         self,
-        space_id: str,
         room_id: str,
         limit: int = 50,
         *,
@@ -303,9 +270,7 @@ class Client:
 
         Returns a connection dict ``{"events": [...], "hasOlder": bool,
         "hasNewer": bool}``. Use ``before`` / ``after`` event IDs for paging.
-        ``space_id`` is accepted for backward compatibility but ignored.
         """
-        del space_id
         variables: dict[str, Any] = {
             "roomId": room_id,
             "limit": limit,
@@ -337,11 +302,8 @@ class Client:
         room = data.get("room") or {}
         return room.get("events") or {"events": [], "hasOlder": False, "hasNewer": False}
 
-    async def get_event(
-        self, space_id: str, room_id: str, event_id: str
-    ) -> dict | None:
+    async def get_event(self, room_id: str, event_id: str) -> dict | None:
         """Fetch a single RoomEvent by id (e.g. to refetch after MessageUpdated)."""
-        del space_id
         data = await self.query(
             ROOM_EVENT_FRAGMENT + """
             query GetEvent($roomId: ID!, $eventId: ID!) {

@@ -50,14 +50,14 @@ class Admin(Cog):
 
     async def _rooms_join(self, ctx: Context, room_id: str):
         try:
-            await self.bot.client.join_room("", room_id)
+            await self.bot.client.join_room(room_id)
             await ctx.reply(f"Joined room `{room_id}`.")
         except Exception as e:
             await ctx.reply(f"Error: {e}")
 
     async def _rooms_leave(self, ctx: Context, room_id: str):
         try:
-            await self.bot.client.leave_room("", room_id)
+            await self.bot.client.leave_room(room_id)
             await ctx.reply(f"Left room `{room_id}`.")
         except Exception as e:
             await ctx.reply(f"Error: {e}")

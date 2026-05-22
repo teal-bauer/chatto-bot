@@ -57,4 +57,3 @@ fragment RoomEventFields on RoomEvent {
 }
 """
 
-SPACE_EVENT_FRAGMENT = ROOM_EVENT_FRAGMENT  # backward-compat alias

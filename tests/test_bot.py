@@ -14,7 +14,6 @@ from chatto_bot.context import Context
 from chatto_bot.types import (
     MessagePostedEvent,
     PresenceChangedEvent,
-    SpaceEvent,
     User,
 )
 from conftest import make_event, make_ctx
