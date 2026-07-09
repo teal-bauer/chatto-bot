@@ -4,7 +4,7 @@
   <img src=".github/social-preview.png" alt="ChattoBot" width="640">
 </p>
 
-Python bot framework for [Chatto](https://chatto.run). Decorator-based commands, discord.py-style cogs, WebSocket subscriptions, auto-reconnect, and typed argument parsing.
+Python bot framework for [Chatto](https://chatto.run). Decorator-based commands, discord.py-style cogs, a realtime event stream with auto-reconnect, and typed argument parsing.
 
 ## Quick Start
 
@@ -12,11 +12,14 @@ Python bot framework for [Chatto](https://chatto.run). Decorator-based commands,
 pip install -e .
 ```
 
-Set your session cookie:
+Set the bot's credentials (exchanged for a bearer token at startup):
 
 ```bash
-export CHATTO_SESSION="your-session-cookie"
+export CHATTO_EMAIL="bot@example.com"
+export CHATTO_PASSWORD="..."
 ```
+
+Or set `CHATTO_TOKEN` directly if you already have a token.
 
 Write a bot:
 
@@ -37,14 +40,15 @@ bot.run()
 
 ## Features
 
-- **Decorator-based commands** with typed argument parsing from type hints
-- **Event handlers** for reacting to any event type (`message_posted`, `reaction_added`, etc.)
-- **Cog system** for grouping related commands and handlers into loadable extensions
-- **Middleware chain** for cross-cutting concerns (logging, ignoring self, permissions)
-- **WebSocket subscriptions** with auto-reconnect and exponential backoff
-- **Missed event replay** on startup (up to 1 hour of history)
-- **Cookie-based auth** via `CHATTO_SESSION` env var (`.env` file supported)
-- **Graceful shutdown** on SIGINT/SIGTERM/SIGHUP with state persistence
+- Decorator-based commands with typed argument parsing from type hints
+- Commands trigger on the prefix (`!ping`) or an @mention of the bot (`@BotName ping`)
+- Event handlers for any event type (`message_posted`, `reaction_added`, ...)
+- Cogs for grouping commands and handlers into loadable extensions
+- Middleware chain for cross-cutting concerns (logging, self-ignoring, permissions)
+- Realtime event stream over a protobuf WebSocket, with auto-reconnect and backoff
+- Reconnect catch-up replays up to an hour of missed events
+- Bearer-token auth (email/password or `CHATTO_TOKEN`), with a session-cookie fallback
+- Graceful shutdown on SIGINT/SIGTERM/SIGHUP with state persistence
 
 ## Commands
 
@@ -61,7 +65,7 @@ async def roll(ctx: Context, sides: int = 6):
 @bot.on_event("message_posted")
 async def on_message(ctx: Context):
     if ctx.body and "hello" in ctx.body.lower():
-        await ctx.react("👋")
+        await ctx.react("wave")  # reactions take emoji shortcodes, not unicode
 ```
 
 ## Cogs
@@ -109,8 +113,9 @@ Environment variables:
 
 | Variable | Description |
 |----------|-------------|
-| `CHATTO_SESSION` | Session cookie value. Required unless `CHATTO_EMAIL` + `CHATTO_PASSWORD` are set. |
-| `CHATTO_EMAIL` / `CHATTO_PASSWORD` | Credentials for password login. The bot exchanges them for a session cookie at startup. |
+| `CHATTO_TOKEN` | Bearer token. Skips login when set. |
+| `CHATTO_EMAIL` / `CHATTO_PASSWORD` | Login credentials. The bot exchanges them for a bearer token at startup. |
+| `CHATTO_SESSION` | Session cookie, used as an auth fallback. |
 | `CHATTO_INSTANCE` | Instance URL (default: `https://dev.chatto.run`). |
 | `CHATTO_PREFIX` | Command prefix (default: `!`). |
 | `CHATTO_ROOMS` | Comma-separated allowlist of room IDs. Empty = all rooms. |
@@ -133,7 +138,7 @@ extensions:
   - plugins.remind
 ```
 
-Keep secrets (`session`, `email`, `password`) out of YAML. Use `.env` or environment variables instead.
+Keep secrets (`token`, `session`, `email`, `password`) out of YAML. Use `.env` or environment variables instead.
 
 ## License
 

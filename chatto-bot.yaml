@@ -1,12 +1,13 @@
 # Chatto Bot configuration
-# Secrets (email, password, session) should stay in .env or environment variables.
+# Secrets (token, email, password, session) should stay in .env or environment variables.
 
 instance: https://chat.chatto.run
 prefix: "!"
 dms: true
 
-spaces:
-  - S6dEs8FO8eFrxFA  # Chatto Community
+# rooms: optional allowlist of room IDs. Omit to handle every joined room.
+# rooms:
+#   - <room-id>
 
 admins:
   - teal
