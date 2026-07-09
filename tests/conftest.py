@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -32,16 +31,27 @@ def bot_config():
 @pytest.fixture
 def mock_client(bot_config):
     client = MagicMock(spec=Client)
-    client.post_message = AsyncMock(return_value={"id": "E1"})
-    client.add_reaction = AsyncMock(return_value=True)
-    client.remove_reaction = AsyncMock(return_value=True)
-    client.edit_message = AsyncMock(return_value=True)
-    client.delete_message = AsyncMock(return_value=True)
-    client.me = AsyncMock(return_value={
-        "id": "Ubot",
-        "login": "testbot",
-        "displayName": "Test Bot",
-    })
+    client.create_message = AsyncMock(return_value=MagicMock(id="E1"))
+    client.add_reaction = AsyncMock(return_value=None)
+    client.remove_reaction = AsyncMock(return_value=None)
+    client.update_message = AsyncMock(return_value=MagicMock(id="E1"))
+    client.delete_message = AsyncMock(return_value=None)
+    # Room-kind resolution (Bot._ensure_room_kind) defaults every room to a
+    # plain channel unless a test overrides it.
+    client.get_room = AsyncMock(return_value=MagicMock(kind=MagicMock()))
+    client.get_viewer = AsyncMock(
+        return_value=MagicMock(
+            profile=MagicMock(
+                id="Ubot",
+                login="testbot",
+                display_name="Test Bot",
+                avatar_url=None,
+                presence_status=None,
+            )
+        )
+    )
+    client.update_presence = AsyncMock(return_value=None)
+    client.list_rooms = AsyncMock(return_value=[])
     client.close = AsyncMock()
     return client
 
@@ -51,6 +61,26 @@ def bot(bot_config, mock_client):
     b = Bot.__new__(Bot)
     b.config = bot_config
     b.client = mock_client
+
+    b.transport = MagicMock()
+    b.transport.token = "fake-token"
+    b.transport.session = None
+    b.transport.identifier = None
+    b.transport.password = None
+    b.transport.relogin = AsyncMock()
+    b.transport.close = AsyncMock()
+
+    b.users = MagicMock()
+    b.users.get = AsyncMock(return_value=None)
+    b.users.get_many = AsyncMock(return_value={})
+    b.users.invalidate = MagicMock()
+
+    b.hydrator = MagicMock()
+    b.hydrator.hydrate = AsyncMock(return_value=None)
+
+    b.realtime = MagicMock()
+    b.realtime.stop = MagicMock()
+
     b._commands = {}
     b._event_handlers = []
     b._cogs = {}
@@ -58,14 +88,14 @@ def bot(bot_config, mock_client):
     b.user = User(id="Ubot", login="testbot", display_name="Test Bot")
     b._closed = False
     b._stop_event = None
+    b._realtime_task = None
+    b._presence_task = None
     b._state_path = MagicMock()
     b._cursor = {}
-    b._room_types = {}
+    b._room_kinds = {}
     b._state_dirty = False
     b._state_flush_task = None
     b._middleware = MiddlewareChain()
-    b._subscriptions = MagicMock()
-    b._subscriptions.stop = AsyncMock()
     b._config_path = None
     b._init_kwargs = {}
     return b

@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import logging
 
-from chatto_bot import Bot, Cog, Context, command
+from connectrpc.code import Code
+
+from chatto_bot import Bot, ChattoError, Cog, Context, command
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +35,7 @@ class Admin(Cog):
 
     async def _rooms_list(self, ctx: Context):
         try:
-            rooms = await self.bot.client.get_rooms()
+            rooms = await self.bot.client.list_rooms()
         except Exception as e:
             await ctx.reply(f"Error: {e}")
             return
@@ -41,11 +43,14 @@ class Admin(Cog):
             await ctx.reply("No rooms visible.")
             return
         lines = ["**Rooms:**"]
-        for r in rooms:
-            mark = " [joined]" if r.get("joined") else ""
-            kind = r.get("type", "")
-            kind_str = f" ({kind.lower()})" if kind else ""
-            lines.append(f"- `{r['id']}` — {r['name']}{kind_str}{mark}")
+        for rws in rooms:
+            room = rws.room
+            if room is None:
+                continue
+            mark = " [joined]" if rws.viewer_state and rws.viewer_state.is_member else ""
+            kind = room.kind.name if room.kind is not None else ""
+            kind_str = f" ({kind.lower()})" if kind and kind != "UNSPECIFIED" else ""
+            lines.append(f"- `{room.id}` — {room.name}{kind_str}{mark}")
         await ctx.reply("\n".join(lines))
 
     async def _rooms_join(self, ctx: Context, room_id: str):
@@ -59,6 +64,13 @@ class Admin(Cog):
         try:
             await self.bot.client.leave_room(room_id)
             await ctx.reply(f"Left room `{room_id}`.")
+        except ChattoError as e:
+            if e.code == Code.FAILED_PRECONDITION:
+                await ctx.reply(
+                    f"Can't leave `{room_id}`: DM and universal rooms can't be left."
+                )
+            else:
+                await ctx.reply(f"Error: {e}")
         except Exception as e:
             await ctx.reply(f"Error: {e}")
 

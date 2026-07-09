@@ -1,155 +1,244 @@
-"""Tests for types.py — event parsing and unknown field handling."""
+"""Tests for types.py — realtime envelope parsing, event-name table, cursors."""
+
+from __future__ import annotations
+
+import datetime
 
 import pytest
+from protobuf import Oneof
+from protobuf.wkt import Timestamp
+
+from chatto_bot._pb.chatto.api.v1.message_types_pb import Message
+from chatto_bot._pb.chatto.api.v1.users_pb import User as ProtoUser
+from chatto_bot._pb.chatto.realtime.v1 import realtime_pb as rt
+from chatto_bot._pb.chatto.api.v1.presence_pb import PresenceStatus
 from chatto_bot.types import (
+    MessageDeletedEvent,
     MessagePostedEvent,
+    MessageUpdatedEvent,
     ReactionAddedEvent,
+    RETIRED_EVENT_NAMES,
     RoomArchivedEvent,
     RoomEvent,
-    ServerUpdatedEvent,
     UnknownEvent,
+    VideoProcessingCompletedEvent,
     event_name,
-    parse_my_event,
-    parse_room_event,
-    _parse_inner_event,
+    format_cursor,
+    normalize_presence_status,
+    parse_envelope,
+    warn_if_retired_event_name,
 )
 
 
-class TestParseInnerEvent:
-    def test_message_posted(self):
-        data = {
-            "__typename": "MessagePostedEvent",
-            "roomId": "R1",
-            "body": "hello",
-        }
-        event = _parse_inner_event(data)
-        assert isinstance(event, MessagePostedEvent)
-        assert event.room_id == "R1"
-        assert event.body == "hello"
-
-    def test_unknown_typename_returns_placeholder(self):
-        event = _parse_inner_event(
-            {"__typename": "FutureEvent", "newField": "value"}
-        )
-        assert isinstance(event, UnknownEvent)
-        assert event.typename == "FutureEvent"
-        assert event.raw["newField"] == "value"
-        assert event_name(event) == "unknown"
-
-    def test_missing_typename_raises(self):
-        with pytest.raises(ValueError, match="missing __typename"):
-            _parse_inner_event({"roomId": "R1"})
-
-    def test_room_archived_event(self):
-        event = _parse_inner_event({"__typename": "RoomArchivedEvent", "roomId": "R1"})
-        assert isinstance(event, RoomArchivedEvent)
-        assert event.room_id == "R1"
-        assert event_name(event) == "room_archived"
-
-    def test_unknown_fields_are_ignored(self):
-        """New server-side fields should not crash parsing."""
-        data = {
-            "__typename": "ReactionAddedEvent",
-            "roomId": "R1",
-            "messageEventId": "E1",
-            "emoji": "heart",
-            "futureField": "some value",
-            "anotherNewField": 42,
-        }
-        event = _parse_inner_event(data)
-        assert isinstance(event, ReactionAddedEvent)
-        assert event.emoji == "heart"
-        assert not hasattr(event, "future_field")
-
-    def test_attachments_parsed(self):
-        data = {
-            "__typename": "MessagePostedEvent",
-            "roomId": "R1",
-            "body": "check this",
-            "attachments": [
-                {
-                    "id": "A1",
-                    "filename": "test.png",
-                    "contentType": "image/png",
-                    "width": 100,
-                    "height": 100,
-                    "url": "https://example.com/test.png",
-                }
-            ],
-        }
-        event = _parse_inner_event(data)
-        assert len(event.attachments) == 1
-        assert event.attachments[0].filename == "test.png"
-
-
-class TestParseRoomEvent:
-    def test_full_event(self):
-        data = {
-            "id": "E1",
-            "createdAt": "2026-01-01T00:00:00Z",
-            "actorId": "U1",
-            "actor": {
-                "id": "U1",
-                "login": "alice",
-                "displayName": "Alice",
-            },
-            "event": {
-                "__typename": "MessagePostedEvent",
-                "roomId": "R1",
-                "body": "hi",
-            },
-        }
-        se = parse_room_event(data)
-        assert isinstance(se, RoomEvent)
-        assert se.actor.login == "alice"
-        assert se.event.body == "hi"
-
-    def test_no_actor(self):
-        data = {
-            "id": "E1",
-            "createdAt": "2026-01-01T00:00:00Z",
-            "actorId": "system",
-            "actor": None,
-            "event": {
-                "__typename": "MessagePostedEvent",
-                "roomId": "R1",
-                "body": "system message",
-            },
-        }
-        se = parse_room_event(data)
-        assert se.actor is None
-
-
-class TestParseServerWideEvent:
-    def test_server_updated(self):
-        wrapper = parse_my_event(
-            {
-                "actorId": "U1",
-                "event": {
-                    "__typename": "ServerUpdatedEvent",
-                    "name": "New name",
-                    "description": "desc",
-                },
-            }
-        )
-        assert isinstance(wrapper, RoomEvent)
-        assert wrapper.actor_id == "U1"
-        assert wrapper.id == ""
-        assert wrapper.created_at == ""
-        assert wrapper.actor is None
-        assert isinstance(wrapper.event, ServerUpdatedEvent)
-        assert wrapper.event.name == "New name"
+def _envelope(field: str, payload, *, id="E1", actor_id="U1", created_at=None) -> rt.RealtimeEventEnvelope:
+    return rt.RealtimeEventEnvelope(
+        id=id,
+        actor_id=actor_id,
+        created_at=created_at or Timestamp.from_datetime(
+            datetime.datetime(2026, 1, 1, tzinfo=datetime.timezone.utc)
+        ),
+        event=Oneof(field, payload),
+    )
 
 
 class TestEventName:
-    def test_known_types(self):
-        event = MessagePostedEvent(room_id="R1")
-        assert event_name(event) == "message_posted"
+    def test_one_to_one_case(self):
+        env = _envelope("reaction_added", rt.RealtimeReactionEvent(room_id="R1", message_event_id="E1", emoji="heart"))
+        assert event_name(env) == "reaction_added"
 
-        event = ReactionAddedEvent(
-            room_id="R1", message_event_id="E1", emoji="heart"
+    def test_message_posted(self):
+        env = _envelope("message_posted", rt.RealtimeMessagePostedEvent(room_id="R1", message_event_id="E1"))
+        assert event_name(env) == "message_posted"
+
+    def test_renames(self):
+        edited = _envelope("message_edited", rt.RealtimeMessageEditedEvent(room_id="R1", message_event_id="E1"))
+        assert event_name(edited) == "message_updated"
+
+        retracted = _envelope(
+            "message_retracted",
+            rt.RealtimeMessageRetractedEvent(room_id="R1", message_event_id="E1"),
         )
-        assert event_name(event) == "reaction_added"
+        assert event_name(retracted) == "message_deleted"
 
-    def test_unknown_type(self):
-        assert event_name("not an event") == "unknown"
+        succeeded = _envelope(
+            "asset_processing_succeeded",
+            rt.RealtimeAssetProcessingEvent(room_id="R1", asset_id="A1"),
+        )
+        assert event_name(succeeded) == "video_processing_completed"
+
+    def test_unmodeled_oneof_case_is_unknown(self):
+        env = _envelope("some_future_event", rt.RealtimeRoomEvent(room_id="R1"))
+        assert event_name(env) == "unknown"
+
+    def test_empty_oneof_is_unknown(self):
+        env = rt.RealtimeEventEnvelope(id="E1", actor_id="U1")
+        assert event_name(env) == "unknown"
+
+
+class TestParseEnvelope:
+    def test_message_posted_uses_hydrated_message_over_signal(self):
+        env = _envelope(
+            "message_posted", rt.RealtimeMessagePostedEvent(room_id="R-signal", message_event_id="E1")
+        )
+        message = Message(id="E1", room_id="R-hydrated", body="hello world")
+        actor = ProtoUser(id="U1", login="alice", display_name="Alice")
+
+        room_event = parse_envelope(env, message=message, actor=actor)
+
+        assert isinstance(room_event, RoomEvent)
+        assert isinstance(room_event.event, MessagePostedEvent)
+        # Uses the hydrated message's room_id, not the bare signal's.
+        assert room_event.event.room_id == "R-hydrated"
+        assert room_event.event.body == "hello world"
+        assert room_event.actor.login == "alice"
+        assert room_event.actor_id == "U1"
+        assert room_event.id == "E1"
+
+    def test_message_posted_without_hydration_falls_back_to_signal(self):
+        """Defensive fallback for direct parse_envelope() use; normal dispatch
+        always hydrates message_posted (see hydrate.py)."""
+        env = _envelope(
+            "message_posted", rt.RealtimeMessagePostedEvent(room_id="R-signal", message_event_id="E1")
+        )
+        room_event = parse_envelope(env)
+        assert isinstance(room_event.event, MessagePostedEvent)
+        assert room_event.event.room_id == "R-signal"
+        assert room_event.event.body is None
+
+    def test_rename_builds_correct_dataclass(self):
+        env = _envelope(
+            "message_retracted",
+            rt.RealtimeMessageRetractedEvent(room_id="R1", message_event_id="E1", reason="spam"),
+        )
+        room_event = parse_envelope(env)
+        assert isinstance(room_event.event, MessageDeletedEvent)
+        assert room_event.event.reason == "spam"
+
+    def test_message_edited_builds_updated_dataclass(self):
+        env = _envelope(
+            "message_edited", rt.RealtimeMessageEditedEvent(room_id="R1", message_event_id="E9")
+        )
+        room_event = parse_envelope(env)
+        assert isinstance(room_event.event, MessageUpdatedEvent)
+        assert room_event.event.message_event_id == "E9"
+        assert room_event.event.body is None  # no message passed in -- nothing to populate
+
+    def test_message_edited_uses_hydrated_message_body(self):
+        """D4: hydrate.py already fetches the current Message for
+        message_edited (to enforce the retracted-between-signal-and-fetch
+        drop contract); the builder must not throw that fetch away -- a
+        message_updated handler should see the edited body without an extra
+        ctx.fetch_message() round trip."""
+        env = _envelope(
+            "message_edited", rt.RealtimeMessageEditedEvent(room_id="R1", message_event_id="E9")
+        )
+        message = Message(id="E9", room_id="R1", body="edited text")
+
+        room_event = parse_envelope(env, message=message)
+
+        assert isinstance(room_event.event, MessageUpdatedEvent)
+        assert room_event.event.message_event_id == "E9"
+        assert room_event.event.body == "edited text"
+
+    def test_reaction_added(self):
+        env = _envelope(
+            "reaction_added",
+            rt.RealtimeReactionEvent(room_id="R1", message_event_id="E1", emoji="thumbsup"),
+        )
+        room_event = parse_envelope(env)
+        assert isinstance(room_event.event, ReactionAddedEvent)
+        assert room_event.event.emoji == "thumbsup"
+
+    def test_room_archived(self):
+        env = _envelope("room_archived", rt.RealtimeRoomEvent(room_id="R1"))
+        room_event = parse_envelope(env)
+        assert isinstance(room_event.event, RoomArchivedEvent)
+        assert room_event.event.room_id == "R1"
+
+    def test_asset_processing_succeeded_builds_video_completed(self):
+        env = _envelope(
+            "asset_processing_succeeded",
+            rt.RealtimeAssetProcessingEvent(room_id="R1", asset_id="A1", message_event_id="E1"),
+        )
+        room_event = parse_envelope(env)
+        assert isinstance(room_event.event, VideoProcessingCompletedEvent)
+        assert room_event.event.asset_id == "A1"
+
+    def test_unmodeled_oneof_case_becomes_unknown_event(self):
+        env = _envelope("some_future_event", rt.RealtimeRoomEvent(room_id="R1"))
+        room_event = parse_envelope(env)
+        assert isinstance(room_event.event, UnknownEvent)
+        assert room_event.event.typename == "some_future_event"
+
+    def test_no_actor(self):
+        env = _envelope("room_archived", rt.RealtimeRoomEvent(room_id="R1"), actor_id="")
+        room_event = parse_envelope(env)
+        assert room_event.actor is None
+        assert room_event.actor_id == ""
+
+
+class TestNormalizePresenceStatus:
+    """D3: an unset/UNSPECIFIED proto presence_status must normalize to
+    "OFFLINE" (the dataclass default, and the value GraphQL-era bots
+    compare against), not the literal enum name "UNSPECIFIED". Proto enum
+    scalars are never None -- unset reads as the zero value -- so a bare
+    ``str(status)`` surfaces "UNSPECIFIED" for a user who simply never set
+    a presence."""
+
+    def test_unspecified_normalizes_to_offline(self):
+        assert normalize_presence_status(PresenceStatus.UNSPECIFIED) == "OFFLINE"
+
+    def test_none_normalizes_to_offline(self):
+        assert normalize_presence_status(None) == "OFFLINE"
+
+    def test_online_passes_through(self):
+        assert normalize_presence_status(PresenceStatus.ONLINE) == "ONLINE"
+
+    def test_user_from_proto_via_parse_envelope(self):
+        """End-to-end: an actor with an unset presence_status must not
+        surface "UNSPECIFIED" on the public User dataclass."""
+        env = _envelope("room_archived", rt.RealtimeRoomEvent(room_id="R1"))
+        actor = ProtoUser(id="U1", login="alice", display_name="Alice")  # presence_status unset
+
+        room_event = parse_envelope(env, actor=actor)
+
+        assert room_event.actor.presence_status == "OFFLINE"
+
+
+class TestFormatCursor:
+    def test_fixed_width(self):
+        ts = Timestamp.from_datetime(
+            datetime.datetime(2026, 3, 4, 5, 6, 7, 890, tzinfo=datetime.timezone.utc)
+        )
+        cursor = format_cursor(ts)
+        assert cursor == "2026-03-04T05:06:07.000890Z"
+
+    def test_none_returns_empty_string(self):
+        assert format_cursor(None) == ""
+
+    def test_lexical_ordering_matches_chronological(self):
+        earlier = format_cursor(
+            Timestamp.from_datetime(datetime.datetime(2026, 1, 1, tzinfo=datetime.timezone.utc))
+        )
+        later = format_cursor(
+            Timestamp.from_datetime(datetime.datetime(2026, 1, 2, tzinfo=datetime.timezone.utc))
+        )
+        assert earlier < later
+
+
+class TestRetiredEventNames:
+    def test_retired_names_include_graphql_era_handlers(self):
+        assert "user_created" in RETIRED_EVENT_NAMES
+        assert "user_deleted" in RETIRED_EVENT_NAMES
+        assert "server_config_updated" in RETIRED_EVENT_NAMES
+        assert "mention_status_cleared" in RETIRED_EVENT_NAMES
+        assert "heartbeat" in RETIRED_EVENT_NAMES
+
+    def test_live_names_are_not_retired(self):
+        assert "message_posted" not in RETIRED_EVENT_NAMES
+        assert "message_updated" not in RETIRED_EVENT_NAMES
+
+    def test_warn_if_retired_event_name_does_not_raise(self):
+        # Should be a no-op (log a warning) for both retired and live names.
+        warn_if_retired_event_name("user_created")
+        warn_if_retired_event_name("message_posted")

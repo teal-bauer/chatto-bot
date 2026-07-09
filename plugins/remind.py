@@ -187,20 +187,21 @@ class Remind(Cog):
 
     # --- User resolution ---
 
-    async def _resolve_user(self, name: str) -> dict | None:
-        """Resolve a display name to a user dict via server member search."""
+    async def _resolve_user(self, name: str):
+        """Resolve a display name to a User proto via the member directory."""
         try:
-            members = await self.bot.client.search_members(name)
+            members = await self.bot.client.list_users(search=name)
         except Exception:
             logger.debug("Member search failed for %r", name)
             return None
-        # Case-insensitive match on displayName
-        for user in members:
-            if user["displayName"].lower() == name.lower():
+        users = [m.user for m in members if m.user is not None]
+        # Case-insensitive match on display_name
+        for user in users:
+            if user.display_name.lower() == name.lower():
                 return user
         # If only one result, use it
-        if len(members) == 1:
-            return members[0]
+        if len(users) == 1:
+            return users[0]
         return None
 
     # --- Commands ---
@@ -247,9 +248,9 @@ class Remind(Cog):
             if not user:
                 await ctx.reply(f"Could not find user `{target_name}`.")
                 return
-            target_id = user["id"]
-            target_display = user["displayName"]
-            target_login = user["login"]
+            target_id = user.id
+            target_display = user.display_name
+            target_login = user.login
 
         reminder = {
             "id": _short_id(),
@@ -358,7 +359,7 @@ class Remind(Cog):
             try:
                 login = r.get("target_login", r["target_name"])
                 msg = f"⏰ @{login} reminder: {r['message']}"
-                await self.bot.client.post_message(r["room_id"], msg)
+                await self.bot.client.create_message(r["room_id"], msg)
             except Exception:
                 logger.exception(
                     "Failed to deliver reminder %s in %s",

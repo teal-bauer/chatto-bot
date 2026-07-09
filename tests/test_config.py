@@ -1,7 +1,7 @@
 """Tests for config.py — dotenv parsing and config loading."""
 
+import logging
 import os
-import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
@@ -63,6 +63,7 @@ class TestBotConfig:
         assert config.prefix == "!"
         assert config.instance == "https://dev.chatto.run"
         assert config.dms is True
+        assert config.token == ""
 
     def test_explicit_args_override_all(self):
         with patch.dict(os.environ, {"CHATTO_INSTANCE": "https://env.example.com"}, clear=False):
@@ -78,40 +79,58 @@ class TestBotConfig:
         env = {
             "CHATTO_INSTANCE": "https://env.example.com",
             "CHATTO_PREFIX": ">>",
-            "CHATTO_SPACES": "S1,S2",
+            "CHATTO_ROOMS": "R1,R2",
             "CHATTO_SESSION": "mysession",
+            "CHATTO_TOKEN": "mytoken",
             "CHATTO_DMS": "false",
         }
         with patch.dict(os.environ, env, clear=True):
             config = BotConfig.load(None)
         assert config.instance == "https://env.example.com"
         assert config.prefix == ">>"
-        assert config.spaces == ["S1", "S2"]
+        assert config.rooms == ["R1", "R2"]
         assert config.session == "mysession"
+        assert config.token == "mytoken"
         assert config.dms is False
 
     def test_yaml_loading(self, tmp_path, monkeypatch):
         yaml_file = tmp_path / "config.yaml"
-        yaml_file.write_text("instance: https://yaml.example.com\nprefix: '#'\nspaces:\n  - S1\n")
+        yaml_file.write_text("instance: https://yaml.example.com\nprefix: '#'\nrooms:\n  - R1\n")
         # Ensure no .env file interferes and no env vars override
         monkeypatch.chdir(tmp_path)
         with patch.dict(os.environ, {}, clear=True):
             config = BotConfig.load(str(yaml_file))
         assert config.instance == "https://yaml.example.com"
         assert config.prefix == "#"
-        assert config.spaces == ["S1"]
+        assert config.rooms == ["R1"]
 
-    def test_graphql_url(self):
+    def test_spaces_in_config_file_warns_and_is_ignored(self, tmp_path, monkeypatch, caplog):
+        """`spaces:` is removed; it should warn (not crash) and have no effect."""
+        yaml_file = tmp_path / "config.yaml"
+        yaml_file.write_text("instance: https://yaml.example.com\nspaces:\n  - S1\n")
+        monkeypatch.chdir(tmp_path)
+        with patch.dict(os.environ, {}, clear=True), caplog.at_level(logging.WARNING):
+            config = BotConfig.load(str(yaml_file))
+        assert not hasattr(config, "spaces")
+        assert any("spaces" in rec.message for rec in caplog.records)
+
+    def test_spaces_env_var_warns_and_is_ignored(self, caplog):
+        env = {"CHATTO_SPACES": "S1,S2"}
+        with patch.dict(os.environ, env, clear=True), caplog.at_level(logging.WARNING):
+            config = BotConfig.load(None)
+        assert any("spaces" in rec.message for rec in caplog.records)
+
+    def test_connect_url(self):
         config = BotConfig(instance="https://test.example.com")
-        assert config.graphql_url == "https://test.example.com/api/graphql"
+        assert config.connect_url == "https://test.example.com/api/connect"
 
     def test_ws_url_https(self):
         config = BotConfig(instance="https://test.example.com")
-        assert config.ws_url == "wss://test.example.com/api/graphql"
+        assert config.ws_url == "wss://test.example.com/api/realtime"
 
     def test_ws_url_http(self):
         config = BotConfig(instance="http://localhost:3000")
-        assert config.ws_url == "ws://localhost:3000/api/graphql"
+        assert config.ws_url == "ws://localhost:3000/api/realtime"
 
     def test_cookie_header(self):
         config = BotConfig(session="abc123")

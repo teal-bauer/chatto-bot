@@ -1,317 +1,408 @@
-"""Async GraphQL HTTP client for Chatto API."""
+"""High-level async ConnectRPC client wrapping generated Chatto service stubs.
+
+Every method here maps to one (or, for typing, occasionally zero) generated RPC call
+and returns the generated proto response message (or a field pulled off it) rather
+than a hand-rolled dict, per the interface contract. Errors from the generated
+clients (``connectrpc.errors.ConnectError``) are translated to :class:`ChattoError`
+(and its :class:`Unauthenticated` subclass) so callers don't need to import
+``connectrpc`` directly.
+"""
 
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
-import httpx
+from connectrpc.code import Code
+from connectrpc.errors import ConnectError
+from protobuf import Oneof
 
-from ._queries import ROOM_EVENT_FRAGMENT
+from ._pb.chatto.api.v1.member_directory_pb import (
+    BatchGetUsersRequest,
+    DirectoryMember,
+    ListUsersRequest,
+)
+from ._pb.chatto.api.v1.member_directory_connect import UserServiceClient
+from ._pb.chatto.api.v1.message_types_pb import Message
+from ._pb.chatto.api.v1.messages_connect import MessageServiceClient
+from ._pb.chatto.api.v1.messages_pb import (
+    BatchGetMessagesRequest,
+    CreateMessageRequest,
+    DeleteMessageRequest,
+    GetMessageRequest,
+    UpdateMessageRequest,
+)
+from ._pb.chatto.api.v1.pagination_pb import PageRequest
+from ._pb.chatto.api.v1.presence_pb import PresenceStatus, UpdatePresenceRequest
+from ._pb.chatto.api.v1.reactions_pb import AddReactionRequest, RemoveReactionRequest
+from ._pb.chatto.api.v1.read_state_pb import MarkRoomAsReadRequest
+from ._pb.chatto.api.v1.room_directory_connect import RoomDirectoryServiceClient
+from ._pb.chatto.api.v1.room_directory_pb import (
+    GetRoomRequest,
+    ListRoomsRequest,
+    RoomDirectoryScope,
+    RoomWithViewerState,
+)
+from ._pb.chatto.api.v1.room_timeline_pb import (
+    GetRoomEventsAroundRequest,
+    GetRoomEventsRequest,
+    RoomTimelinePage,
+)
+from ._pb.chatto.api.v1.rooms_connect import RoomServiceClient
+from ._pb.chatto.api.v1.rooms_pb import (
+    JoinRoomRequest,
+    LeaveRoomRequest,
+    Room,
+    StartDMRequest,
+    UpdateTypingIndicatorRequest,
+)
+from ._pb.chatto.api.v1.account_connect import MyAccountServiceClient
+from ._pb.chatto.api.v1.viewer_connect import ViewerServiceClient
+from ._pb.chatto.api.v1.viewer_pb import GetViewerRequest, ViewerUser
 
 if TYPE_CHECKING:
-    from .config import BotConfig
+    from .transport import Transport
 
 logger = logging.getLogger(__name__)
 
-
-class GraphQLError(Exception):
-    """Raised when the GraphQL response contains errors."""
-
-    def __init__(self, errors: list[dict], data: Any = None):
-        self.errors = errors
-        self.data = data
-        messages = [e.get("message", str(e)) for e in errors]
-        super().__init__(f"GraphQL errors: {'; '.join(messages)}")
+_SCOPE_PREFIX = "ROOM_DIRECTORY_SCOPE_"
+_PRESENCE_PREFIX = "PRESENCE_STATUS_"
 
 
-async def login(instance: str, identifier: str, password: str) -> str:
-    """Log in with email/password and return the session cookie value."""
-    url = f"{instance.rstrip('/')}/auth/login"
-    async with httpx.AsyncClient() as http:
-        resp = await http.post(url, json={"identifier": identifier, "password": password})
-        resp.raise_for_status()
-        session = resp.cookies.get("chatto_session")
-        if not session:
-            raise RuntimeError("Login succeeded but no session cookie returned")
-        return session
+class ChattoError(Exception):
+    """A ConnectRPC call failed. ``code`` is a :class:`connectrpc.code.Code`."""
+
+    def __init__(self, code: Code, message: str) -> None:
+        self.code = code
+        self.message = message
+        super().__init__(f"{code.value}: {message}")
+
+
+class Unauthenticated(ChattoError):
+    """The bearer token/session was rejected (``Code.UNAUTHENTICATED``).
+
+    Callers should invoke ``transport.relogin()`` and retry (or reconnect, for the
+    realtime layer); this is not necessarily an unrecoverable error.
+    """
+
+
+def _map_error(exc: ConnectError) -> ChattoError:
+    if exc.code == Code.UNAUTHENTICATED:
+        return Unauthenticated(exc.code, exc.message)
+    return ChattoError(exc.code, exc.message)
+
+
+def _resolve_scope(scope: str | RoomDirectoryScope | None) -> RoomDirectoryScope:
+    if scope is None:
+        return RoomDirectoryScope.ALL
+    if isinstance(scope, RoomDirectoryScope):
+        return scope
+    name = scope.removeprefix(_SCOPE_PREFIX)
+    return RoomDirectoryScope[name]
+
+
+def _resolve_presence(status: str | PresenceStatus) -> PresenceStatus:
+    if isinstance(status, PresenceStatus):
+        return status
+    name = status.removeprefix(_PRESENCE_PREFIX)
+    return PresenceStatus[name]
 
 
 class Client:
-    """Async GraphQL HTTP client with cookie auth."""
+    """Async wrappers over the generated Chatto ConnectRPC service clients.
 
-    def __init__(self, config: BotConfig) -> None:
-        self.config = config
-        self._url = config.graphql_url
-        self._http = httpx.AsyncClient(
-            headers={
-                "Content-Type": "application/json",
-                "Cookie": config.cookie_header,
-                "Origin": config.instance,
-                "Accept": "application/graphql-response+json, application/json",
-            },
-            timeout=30.0,
-        )
+    Holds no per-call state of its own; every method builds a request, resolves the
+    matching long-lived service client from ``transport.client(...)``, sends the
+    current auth headers, and unwraps (or re-raises) the response.
+    """
+
+    def __init__(self, transport: Transport) -> None:
+        self._transport = transport
+
+    def _headers(self) -> dict[str, str]:
+        return self._transport.headers()
+
+    async def _call_or_raise(self, coro):
+        try:
+            return await coro
+        except ConnectError as exc:
+            raise _map_error(exc) from exc
+
+    async def _call_or_none(self, coro):
+        try:
+            return await coro
+        except ConnectError as exc:
+            if exc.code == Code.NOT_FOUND:
+                return None
+            raise _map_error(exc) from exc
 
     async def close(self) -> None:
-        await self._http.aclose()
+        """Close the underlying transport (and its cached service clients)."""
+        await self._transport.close()
 
-    async def execute(
-        self, query: str, variables: dict | None = None
-    ) -> dict[str, Any]:
-        """Execute a GraphQL query/mutation and return the data dict."""
-        payload: dict[str, Any] = {"query": query}
-        if variables:
-            payload["variables"] = variables
+    # --- Viewer ---
 
-        resp = await self._http.post(self._url, json=payload)
-        resp.raise_for_status()
-        result = resp.json()
-
-        if errors := result.get("errors"):
-            raise GraphQLError(errors, result.get("data"))
-
-        return result.get("data", {})
-
-    async def query(
-        self, query: str, variables: dict | None = None
-    ) -> dict[str, Any]:
-        return await self.execute(query, variables)
-
-    async def mutate(
-        self, query: str, variables: dict | None = None
-    ) -> dict[str, Any]:
-        return await self.execute(query, variables)
-
-    # --- Convenience methods ---
-
-    async def me(self) -> dict | None:
-        """Get the current authenticated user (now reached via ``viewer``)."""
-        data = await self.query(
-            "{ viewer { user { id login displayName avatarUrl presenceStatus } } }"
+    async def get_viewer(self) -> ViewerUser:
+        client = self._transport.client(ViewerServiceClient)
+        resp = await self._call_or_raise(
+            client.get_viewer(GetViewerRequest(), headers=self._headers())
         )
-        return ((data.get("viewer") or {}).get("user")) or None
+        return resp.user
 
-    async def update_presence(self, status: str = "ONLINE") -> bool:
-        """Set the bot's presence status."""
-        data = await self.mutate(
-            """
-            mutation UpdatePresence($input: UpdateMyPresenceInput!) {
-                updateMyPresence(input: $input)
-            }
-            """,
-            {"input": {"status": status}},
+    # --- Rooms / room directory ---
+
+    async def list_rooms(
+        self, scope: str | RoomDirectoryScope | None = None
+    ) -> list[RoomWithViewerState]:
+        """List rooms visible to the current user.
+
+        ``RoomDirectoryService.ListRooms`` has no ``PageRequest``/``PageInfo`` --
+        unlike most other list RPCs, it's documented as returning a finite snapshot
+        of every matching room in one response, so there is nothing to paginate.
+        """
+        client = self._transport.client(RoomDirectoryServiceClient)
+        resp = await self._call_or_raise(
+            client.list_rooms(
+                ListRoomsRequest(scope=_resolve_scope(scope)), headers=self._headers()
+            )
         )
-        return data["updateMyPresence"]
+        return list(resp.rooms)
 
-    async def post_message(
+    async def get_room(self, room_id: str) -> Room:
+        client = self._transport.client(RoomDirectoryServiceClient)
+        resp = await self._call_or_raise(
+            client.get_room(GetRoomRequest(room_id=room_id), headers=self._headers())
+        )
+        return resp.room.room
+
+    async def join_room(self, room_id: str) -> Room:
+        client = self._transport.client(RoomServiceClient)
+        resp = await self._call_or_raise(
+            client.join_room(JoinRoomRequest(room_id=room_id), headers=self._headers())
+        )
+        return resp.room
+
+    async def leave_room(self, room_id: str) -> bool:
+        """Leave a room. Raises :class:`ChattoError` (typically
+        ``Code.FAILED_PRECONDITION``) for DM and universal rooms, which cannot be
+        left; callers should catch it to message the user rather than crash.
+        """
+        client = self._transport.client(RoomServiceClient)
+        resp = await self._call_or_raise(
+            client.leave_room(LeaveRoomRequest(room_id=room_id), headers=self._headers())
+        )
+        return resp.left
+
+    async def start_dm(self, participant_ids: list[str]) -> Room:
+        client = self._transport.client(RoomServiceClient)
+        resp = await self._call_or_raise(
+            client.start_dm(
+                StartDMRequest(participant_ids=participant_ids), headers=self._headers()
+            )
+        )
+        return resp.room
+
+    # --- Messages ---
+
+    async def create_message(
         self,
         room_id: str,
         body: str,
         *,
         in_reply_to: str | None = None,
-    ) -> dict:
-        """Post a message and return the wrapper RoomEvent."""
-        variables: dict[str, Any] = {
-            "input": {
-                "roomId": room_id,
-                "body": body,
-            }
-        }
-        if in_reply_to:
-            variables["input"]["inReplyTo"] = in_reply_to
-
-        data = await self.mutate(
-            ROOM_EVENT_FRAGMENT + """
-            mutation PostMessage($input: PostMessageInput!) {
-                postMessage(input: $input) { ...RoomEventFields }
-            }
-            """,
-            variables,
+        thread_root_event_id: str | None = None,
+    ) -> Message:
+        client = self._transport.client(MessageServiceClient)
+        resp = await self._call_or_raise(
+            client.create_message(
+                CreateMessageRequest(
+                    room_id=room_id,
+                    body=body,
+                    in_reply_to=in_reply_to or "",
+                    thread_root_event_id=thread_root_event_id or "",
+                ),
+                headers=self._headers(),
+            )
         )
-        return data["postMessage"]
+        return resp.message
 
-    async def edit_message(self, room_id: str, event_id: str, body: str) -> bool:
-        data = await self.mutate(
-            """
-            mutation UpdateMessage($input: UpdateMessageInput!) {
-                updateMessage(input: $input)
-            }
-            """,
-            {"input": {"roomId": room_id, "eventId": event_id, "body": body}},
+    async def update_message(self, room_id: str, event_id: str, body: str) -> Message:
+        client = self._transport.client(MessageServiceClient)
+        resp = await self._call_or_raise(
+            client.update_message(
+                UpdateMessageRequest(room_id=room_id, event_id=event_id, body=body),
+                headers=self._headers(),
+            )
         )
-        return data["updateMessage"]
+        return resp.message
 
-    async def delete_message(self, room_id: str, event_id: str) -> bool:
-        data = await self.mutate(
-            """
-            mutation DeleteMessage($input: DeleteMessageInput!) {
-                deleteMessage(input: $input)
-            }
-            """,
-            {"input": {"roomId": room_id, "eventId": event_id}},
+    async def delete_message(self, room_id: str, event_id: str) -> None:
+        client = self._transport.client(MessageServiceClient)
+        await self._call_or_raise(
+            client.delete_message(
+                DeleteMessageRequest(room_id=room_id, event_id=event_id),
+                headers=self._headers(),
+            )
         )
-        return data["deleteMessage"]
 
-    async def add_reaction(
-        self, room_id: str, message_event_id: str, emoji: str
-    ) -> bool:
-        data = await self.mutate(
-            """
-            mutation AddReaction($input: AddReactionInput!) {
-                addReaction(input: $input)
-            }
-            """,
-            {"input": {"roomId": room_id, "messageEventId": message_event_id, "emoji": emoji}},
+    async def get_message(self, room_id: str, event_id: str) -> Message | None:
+        """Fetch one message. Returns ``None`` on ``NOT_FOUND`` -- including a
+        message retracted between an event signal and this fetch."""
+        client = self._transport.client(MessageServiceClient)
+        resp = await self._call_or_none(
+            client.get_message(
+                GetMessageRequest(room_id=room_id, event_id=event_id),
+                headers=self._headers(),
+            )
         )
-        return data["addReaction"]
+        return resp.message if resp is not None else None
 
-    async def remove_reaction(
-        self, room_id: str, message_event_id: str, emoji: str
-    ) -> bool:
-        data = await self.mutate(
-            """
-            mutation RemoveReaction($input: RemoveReactionInput!) {
-                removeReaction(input: $input)
-            }
-            """,
-            {"input": {"roomId": room_id, "messageEventId": message_event_id, "emoji": emoji}},
+    async def batch_get_messages(
+        self, room_id: str, event_ids: list[str]
+    ) -> list[Message]:
+        """Room-scoped batch fetch, 1-100 ids. Missing/retracted ids are silently
+        omitted from the result by the server, not raised as errors."""
+        client = self._transport.client(MessageServiceClient)
+        resp = await self._call_or_raise(
+            client.batch_get_messages(
+                BatchGetMessagesRequest(room_id=room_id, event_ids=event_ids),
+                headers=self._headers(),
+            )
         )
-        return data["removeReaction"]
+        return list(resp.messages)
 
-    async def start_dm(self, participant_ids: list[str]) -> dict:
-        """Start or get an existing DM room."""
-        data = await self.mutate(
-            """
-            mutation StartDM($input: StartDMInput!) {
-                startDM(input: $input) {
-                    id name
-                    members { id login displayName }
-                }
-            }
-            """,
-            {"input": {"participantIds": participant_ids}},
-        )
-        return data["startDM"]
-
-    async def join_room(self, room_id: str) -> bool:
-        data = await self.mutate(
-            """
-            mutation JoinRoom($input: JoinRoomInput!) {
-                joinRoom(input: $input) { id }
-            }
-            """,
-            {"input": {"roomId": room_id}},
-        )
-        return bool((data.get("joinRoom") or {}).get("id"))
-
-    async def leave_room(self, room_id: str) -> bool:
-        data = await self.mutate(
-            """
-            mutation LeaveRoom($input: LeaveRoomInput!) {
-                leaveRoom(input: $input)
-            }
-            """,
-            {"input": {"roomId": room_id}},
-        )
-        return data["leaveRoom"]
-
-    async def get_rooms(self) -> list[dict]:
-        """Return all rooms visible to the bot, with joined/type metadata."""
-        data = await self.query(
-            """
-            {
-                server {
-                    rooms {
-                        id name type archived
-                        viewerCanPostMessage
-                    }
-                }
-                viewer {
-                    user { rooms { id } }
-                }
-            }
-            """
-        )
-        server = data.get("server") or {}
-        rooms = [r for r in (server.get("rooms") or []) if not r.get("archived")]
-        viewer_user = ((data.get("viewer") or {}).get("user")) or {}
-        joined_ids = {r["id"] for r in (viewer_user.get("rooms") or [])}
-        for r in rooms:
-            r["joined"] = r["id"] in joined_ids
-        return rooms
-
-    async def search_members(self, search: str, limit: int = 5) -> list[dict]:
-        """Search for members in the instance by display name."""
-        data = await self.query(
-            """
-            query SearchMembers($search: String!, $limit: Int) {
-                server {
-                    members(search: $search, limit: $limit) {
-                        users { id login displayName }
-                    }
-                }
-            }
-            """,
-            {"search": search, "limit": limit},
-        )
-        server = data.get("server") or {}
-        return (server.get("members") or {}).get("users") or []
+    # --- Room timeline ---
 
     async def get_room_events(
         self,
         room_id: str,
-        limit: int = 50,
         *,
+        limit: int = 50,
         before: str | None = None,
         after: str | None = None,
-    ) -> dict:
-        """Fetch recent events from a room.
-
-        Returns a connection dict ``{"events": [...], "hasOlder": bool,
-        "hasNewer": bool}``. Use ``before`` / ``after`` event IDs for paging.
-        """
-        variables: dict[str, Any] = {
-            "roomId": room_id,
-            "limit": limit,
-        }
-        params = "$roomId: ID!, $limit: Int"
-        args = "limit: $limit"
+    ) -> RoomTimelinePage:
+        """Fetch a page of room timeline events. ``before``/``after`` are opaque
+        server-issued cursors (``RoomTimelinePage.start_cursor``/``end_cursor``),
+        not event IDs -- do not construct or parse them."""
+        cursor = None
         if before is not None:
-            params += ", $before: String"
-            args += ", before: $before"
-            variables["before"] = before
-        if after is not None:
-            params += ", $after: String"
-            args += ", after: $after"
-            variables["after"] = after
-
-        data = await self.query(
-            ROOM_EVENT_FRAGMENT + f"""
-            query RoomEvents({params}) {{
-                room(roomId: $roomId) {{
-                    events({args}) {{
-                        events {{ ...RoomEventFields }}
-                        hasOlder hasNewer
-                    }}
-                }}
-            }}
-            """,
-            variables,
+            cursor = Oneof("before", before)
+        elif after is not None:
+            cursor = Oneof("after", after)
+        client = self._transport.client(RoomServiceClient)
+        resp = await self._call_or_raise(
+            client.get_room_events(
+                GetRoomEventsRequest(room_id=room_id, limit=limit, cursor=cursor),
+                headers=self._headers(),
+            )
         )
-        room = data.get("room") or {}
-        return room.get("events") or {"events": [], "hasOlder": False, "hasNewer": False}
+        return resp.page
 
-    async def get_event(self, room_id: str, event_id: str) -> dict | None:
-        """Fetch a single RoomEvent by id (e.g. to refetch after MessageUpdated)."""
-        data = await self.query(
-            ROOM_EVENT_FRAGMENT + """
-            query GetEvent($roomId: ID!, $eventId: ID!) {
-                room(roomId: $roomId) {
-                    event(eventId: $eventId) { ...RoomEventFields }
-                }
-            }
-            """,
-            {"roomId": room_id, "eventId": event_id},
+    async def get_room_events_around(
+        self, room_id: str, event_id: str, limit: int = 50
+    ) -> RoomTimelinePage:
+        client = self._transport.client(RoomServiceClient)
+        resp = await self._call_or_raise(
+            client.get_room_events_around(
+                GetRoomEventsAroundRequest(room_id=room_id, event_id=event_id, limit=limit),
+                headers=self._headers(),
+            )
         )
-        return ((data.get("room") or {}).get("event"))
+        return resp.page
+
+    async def mark_room_as_read(self, room_id: str, up_to_event_id: str) -> None:
+        client = self._transport.client(RoomServiceClient)
+        await self._call_or_raise(
+            client.mark_room_as_read(
+                MarkRoomAsReadRequest(room_id=room_id, up_to_event_id=up_to_event_id),
+                headers=self._headers(),
+            )
+        )
+
+    # --- Reactions (MessageService.AddReaction/RemoveReaction) ---
+
+    async def add_reaction(self, room_id: str, message_event_id: str, emoji: str) -> None:
+        """``emoji`` is a shortcode (e.g. ``"thumbsup"``), not a literal glyph."""
+        client = self._transport.client(MessageServiceClient)
+        await self._call_or_raise(
+            client.add_reaction(
+                AddReactionRequest(
+                    room_id=room_id, message_event_id=message_event_id, emoji=emoji
+                ),
+                headers=self._headers(),
+            )
+        )
+
+    async def remove_reaction(self, room_id: str, message_event_id: str, emoji: str) -> None:
+        client = self._transport.client(MessageServiceClient)
+        await self._call_or_raise(
+            client.remove_reaction(
+                RemoveReactionRequest(
+                    room_id=room_id, message_event_id=message_event_id, emoji=emoji
+                ),
+                headers=self._headers(),
+            )
+        )
+
+    # --- Users / member directory ---
+
+    async def list_users(self, search: str = "", *, limit: int = 50) -> list[DirectoryMember]:
+        client = self._transport.client(UserServiceClient)
+        resp = await self._call_or_raise(
+            client.list_users(
+                ListUsersRequest(search=search, page=PageRequest(limit=limit, offset=0)),
+                headers=self._headers(),
+            )
+        )
+        return list(resp.users)
+
+    async def batch_get_users(self, user_ids: list[str]) -> list[DirectoryMember]:
+        client = self._transport.client(UserServiceClient)
+        resp = await self._call_or_raise(
+            client.batch_get_users(
+                BatchGetUsersRequest(user_ids=user_ids), headers=self._headers()
+            )
+        )
+        return list(resp.users)
+
+    # --- Presence / typing / read state ---
+
+    async def update_presence(
+        self, status: str | PresenceStatus = "PRESENCE_STATUS_ONLINE"
+    ) -> None:
+        """Set the current user's live presence. Transient -- callers must keep
+        refreshing on an interval; ``PRESENCE_STATUS_OFFLINE`` cannot be set
+        explicitly (the server rejects it)."""
+        client = self._transport.client(MyAccountServiceClient)
+        await self._call_or_raise(
+            client.update_presence(
+                UpdatePresenceRequest(status=_resolve_presence(status)),
+                headers=self._headers(),
+            )
+        )
+
+    async def update_typing_indicator(
+        self,
+        room_id: str,
+        is_typing: bool = True,
+        thread_root_event_id: str | None = None,
+    ) -> None:
+        """Refresh the live-only typing indicator for a room or thread.
+
+        The RPC only supports "I am typing now" (it expires on its own via a
+        server-side TTL); there is no proto field for "stopped typing". When
+        ``is_typing`` is ``False`` this is a deliberate no-op rather than an error,
+        so existing bot code that calls ``update_typing_indicator(room, False)``
+        to mean "stop" keeps working without raising.
+        """
+        if not is_typing:
+            return
+        client = self._transport.client(RoomServiceClient)
+        await self._call_or_raise(
+            client.update_typing_indicator(
+                UpdateTypingIndicatorRequest(
+                    room_id=room_id, thread_root_event_id=thread_root_event_id or ""
+                ),
+                headers=self._headers(),
+            )
+        )

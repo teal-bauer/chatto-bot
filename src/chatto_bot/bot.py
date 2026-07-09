@@ -8,25 +8,37 @@ import json
 import logging
 import os
 import signal
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Callable, Awaitable
+from typing import Any, Awaitable, Callable, TYPE_CHECKING
 
-from .client import Client, login
+from ._pb.chatto.api.v1.rooms_pb import RoomKind
+from .client import Client, Unauthenticated
 from .cog import Cog
-from .command import Command, CommandError, command
+from .command import Command, CommandError
 from .config import BotConfig
 from .context import Context
-from .event import EventHandler, on_event
+from .event import EventHandler
+from .hydrate import Hydrator
 from .middleware import MiddlewareChain, MiddlewareFunc
-from .subscription import SubscriptionManager
+from .realtime import Realtime, RealtimeStopped
+from .transport import AuthError, Transport
+from .usercache import UserCache
 from .types import (
-    MessagePostedEvent,
+    EVENT_NAME_TO_TYPE,
     RoomEvent,
     User,
     event_name,
-    parse_room_event,
+    format_cursor,
+    normalize_presence_status,
+    parse_envelope,
+    warn_if_retired_event_name,
 )
+
+if TYPE_CHECKING:
+    from ._pb.chatto.api.v1.room_directory_pb import RoomWithViewerState
+    from ._pb.chatto.api.v1.room_timeline_pb import RoomTimelineEvent, RoomTimelineIncludes
+    from ._pb.chatto.realtime.v1.realtime_pb import RealtimeEventEnvelope
 
 logger = logging.getLogger(__name__)
 
@@ -34,9 +46,39 @@ logger = logging.getLogger(__name__)
 # global event stream, so one cursor covers everything.
 _GLOBAL_CURSOR_KEY = "_global"
 
+# Presence is transient server-side (no "stay ONLINE until told otherwise"),
+# so it needs periodic refreshing or the bot drifts to OFFLINE while still
+# very much running.
+_PRESENCE_INTERVAL_SECONDS = 240
+
+# Reconnect catch-up: page size and a hard cap on how many pages we'll walk
+# backwards per room, so a room with a huge backlog can't make catch-up run
+# forever.
+_CATCH_UP_PAGE_LIMIT = 50
+_CATCH_UP_MAX_PAGES = 20
+_CATCH_UP_HOURS = 1
+
+# Reverse of types.EVENT_NAME_TO_TYPE: dataclass type -> public event name.
+# Used to recover the dispatch name from an already-parsed RoomEvent without
+# re-deriving it from the realtime envelope (which isn't always available --
+# catch-up events come from RoomTimelineEvent, not RealtimeEventEnvelope).
+_TYPE_TO_EVENT_NAME: dict[type, str] = {v: k for k, v in EVENT_NAME_TO_TYPE.items()}
+
+
+def _event_name_for(inner: Any) -> str:
+    """Dataclass instance -> its public snake_case event name."""
+    return _TYPE_TO_EVENT_NAME.get(type(inner), "unknown")
+
+
+def _format_cutoff(dt: datetime) -> str:
+    """Format a plain datetime the same way ``types.format_cursor`` formats a
+    protobuf Timestamp, so the catch-up hard cutoff compares lexically
+    against stored/emitted cursors."""
+    return dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f") + "Z"
+
 
 class Bot:
-    """The main bot object. Holds config, client, subscriptions, and registries."""
+    """The main bot object. Holds config, client, realtime stream, and registries."""
 
     def __init__(
         self,
@@ -48,6 +90,7 @@ class Bot:
         dms: bool | None = None,
         email: str | None = None,
         password: str | None = None,
+        token: str | None = None,
     ) -> None:
         self._config_path = config_path
         self._init_kwargs = {
@@ -58,10 +101,16 @@ class Bot:
             "email": email,
             "password": password,
             "dms": dms,
+            "token": token,
         }
         self.config = BotConfig.load(config_path, **self._init_kwargs)
-        self.client = Client(self.config)
-        self._subscriptions = SubscriptionManager(self.config)
+
+        self.transport = self._build_transport()
+        self.client = Client(self.transport)
+        self.users = UserCache(self.client)
+        self.hydrator = Hydrator(self.client, self.users)
+        self.realtime = Realtime(self.transport)
+
         self._middleware = MiddlewareChain()
 
         # Registries
@@ -74,10 +123,12 @@ class Bot:
         self.user: User | None = None
         self._closed = False
         self._stop_event: asyncio.Event | None = None
+        self._realtime_task: asyncio.Task | None = None
+        self._presence_task: asyncio.Task | None = None
 
-        # room_id -> RoomType ("CHANNEL" | "DM"), populated from Instance.rooms
-        # at startup. Used to gate DM dispatch when ``config.dms`` is false.
-        self._room_types: dict[str, str] = {}
+        # room_id -> is_dm (RoomKind.DM). Populated from ListRooms
+        # at catch-up time and lazily via GetRoom on a cache miss.
+        self._room_kinds: dict[str, bool] = {}
 
         # Persistent state: last processed event timestamp (global cursor).
         self._state_path = Path(".chatto-bot-state.json")
@@ -85,6 +136,15 @@ class Bot:
         self._state_dirty = False
         self._state_flush_task: asyncio.Task | None = None
         self._load_state()
+
+    def _build_transport(self) -> Transport:
+        return Transport(
+            self.config.instance,
+            self.config.token or None,
+            self.config.session or None,
+            identifier=self.config.email or None,
+            password=self.config.password or None,
+        )
 
     # --- Command registration ---
 
@@ -144,10 +204,10 @@ class Bot:
         event_type: str,
         *,
         room: str | None = None,
-        space: str | None = None,
         actor: str | None = None,
     ) -> Callable:
         """Decorator to register an event handler on this bot."""
+        warn_if_retired_event_name(event_type)
 
         def decorator(func: Callable[..., Awaitable[None]]) -> EventHandler:
             handler = EventHandler(
@@ -155,11 +215,7 @@ class Bot:
                 callback=func,
                 filters={
                     k: v
-                    for k, v in [
-                        ("room", room),
-                        ("space", space),
-                        ("actor", actor),
-                    ]
+                    for k, v in [("room", room), ("actor", actor)]
                     if v is not None
                 },
             )
@@ -186,6 +242,8 @@ class Bot:
         for cmd in cog.__cog_commands__:
             self.add_command(cmd)
 
+        for handler in cog.__cog_event_handlers__:
+            warn_if_retired_event_name(handler.event_type)
         self._event_handlers.extend(cog.__cog_event_handlers__)
 
         self._cogs[name] = cog
@@ -277,40 +335,91 @@ class Bot:
 
     # --- Event dispatching ---
 
-    async def _dispatch(self, event: RoomEvent) -> None:
+    def _has_handler_for(self, name: str) -> bool:
+        return any(h.event_type == name for h in self._event_handlers)
+
+    def _will_dispatch(self, name: str) -> bool:
+        """Whether hydrating this event is worth it -- it will actually
+        reach a handler (or, for message_posted, possibly a command).
+
+        Commands are parsed out of message bodies in ``_dispatch_command``,
+        not routed through ``_event_handlers``, so ``message_posted`` must
+        hydrate whenever *any* command is registered, independent of
+        whether a raw ``message_posted`` handler also exists.
+        """
+        if name == "message_posted":
+            return bool(self._commands) or self._has_handler_for("message_posted")
+        return self._has_handler_for(name)
+
+    async def _on_envelope(self, envelope: RealtimeEventEnvelope) -> None:
+        """Realtime dispatch entrypoint, passed to ``Realtime.run()``."""
+        name = event_name(envelope)
+        if not self._will_dispatch(name):
+            return
+
+        try:
+            hydrated = await self.hydrator.hydrate(envelope)
+        except Unauthenticated:
+            # The bearer token can be revoked mid-run (hydrate.py calls
+            # client.get_message/batch_get_users). Relogin right away, then
+            # re-raise: realtime.py's dispatch guard must let this propagate
+            # instead of swallowing it, which tears the WS connection down
+            # and hands control back to `_run_realtime`'s supervisor loop, so
+            # it reconnects and runs catch-up for whatever got missed.
+            logger.warning("Credential rejected while hydrating a realtime event")
+            await self._handle_unauthenticated()
+            raise
+        if hydrated is None:
+            return  # retracted between signal and fetch, or otherwise dropped
+
+        room_event = parse_envelope(
+            hydrated.envelope, message=hydrated.message, actor=hydrated.actor
+        )
+        await self._dispatch(room_event)
+
+    async def _dispatch(self, event: RoomEvent) -> bool:
         """Dispatch an event through middleware and to handlers.
 
-        Cursor dedup applies to per-room events only (instance events have
-        no created_at and aren't part of a replay-able stream). The cursor
-        only advances *after* a successful dispatch or a deterministic
-        filter skip. If middleware raises, the event replays on next
-        start instead of being silently dropped.
+        Cursor dedup applies to per-room events only (server-wide events
+        have no created_at and aren't part of a replay-able stream). The
+        cursor only advances *after* a successful dispatch or a
+        deterministic filter skip. If middleware raises, the event replays
+        on next start instead of being silently dropped.
+
+        Returns whether the event actually reached middleware/handlers --
+        ``False`` for a cursor-dedup drop or a deterministic filter skip.
+        Callers that count "replayed" events (catch-up) should use this
+        instead of assuming every call that didn't raise did real work.
         """
         if event.created_at:
             cursor_ts = self._cursor.get(_GLOBAL_CURSOR_KEY, "")
             if cursor_ts and event.created_at <= cursor_ts:
-                return
+                return False
+
+        etype = _event_name_for(event.event)
+        self._apply_invalidations(etype, event.event)
 
         room_id = getattr(event.event, "room_id", None) or ""
+        if room_id:
+            await self._ensure_room_kind(room_id)
 
         # Deterministic skips: these decisions don't change on retry, so
         # the cursor advances even though no handler runs.
         skipped = (
             (self.config.rooms and room_id and room_id not in self.config.rooms)
-            or (not self.config.dms and room_id and self._room_types.get(room_id) == "DM")
+            or (not self.config.dms and room_id and self._room_kinds.get(room_id, False))
             or (self.user and event.actor_id == self.user.id)
         )
         if skipped:
             self._commit_cursor(event)
-            return
+            return False
 
         ctx = Context(self, event)
-        etype = event_name(event.event)
 
         async def handle() -> None:
-            if isinstance(event.event, MessagePostedEvent) and event.event.body:
-                body = event.event.body
-                if body.startswith(self.config.prefix):
+            if etype == "message_posted":
+                body = getattr(event.event, "body", None)
+                if body and body.startswith(self.config.prefix):
                     await self._dispatch_command(ctx, body)
 
             for handler in self._event_handlers:
@@ -318,19 +427,44 @@ class Bot:
                     try:
                         await handler.invoke(ctx)
                     except Exception:
-                        logger.exception(
-                            "Error in event handler for %s", etype
-                        )
+                        logger.exception("Error in event handler for %s", etype)
 
         await self._middleware.run(ctx, handle)
         self._commit_cursor(event)
+        return True
 
-    def _commit_cursor(self, event: RoomEvent) -> None:
-        """Advance the cursor past this event and schedule a flush."""
-        if not event.created_at:
+    def _apply_invalidations(self, etype: str, inner: Any) -> None:
+        """Keep the room-kind cache and the user cache from serving stale
+        answers for the events known to invalidate them."""
+        if etype in ("room_created", "new_direct_message_notification"):
+            room_id = getattr(inner, "room_id", "") or ""
+            if room_id:
+                self._room_kinds.pop(room_id, None)
+        elif etype in ("user_profile_updated", "presence_changed"):
+            user_id = getattr(inner, "user_id", "")
+            if user_id:
+                self.users.invalidate(user_id)
+
+    async def _ensure_room_kind(self, room_id: str) -> None:
+        """Populate ``self._room_kinds[room_id]`` on a cache miss via GetRoom,
+        so ``Context.is_dm`` can stay a synchronous property."""
+        if room_id in self._room_kinds:
             return
-        self._advance_cursor(event.created_at)
-        self._mark_state_dirty()
+        try:
+            room = await self.client.get_room(room_id)
+        except Unauthenticated:
+            await self._handle_unauthenticated()
+            return
+        except Exception:
+            logger.debug("Could not resolve room kind for %s", room_id, exc_info=True)
+            return
+        self._room_kinds[room_id] = room.kind == RoomKind.DM
+
+    def _refresh_room_kinds(self, rooms: list[RoomWithViewerState]) -> None:
+        for rws in rooms:
+            room = rws.room
+            if room is not None and room.id:
+                self._room_kinds[room.id] = room.kind == RoomKind.DM
 
     async def _dispatch_command(self, ctx: Context, body: str) -> None:
         """Parse and dispatch a command from a message body."""
@@ -395,118 +529,249 @@ class Bot:
         tmp.write_text(json.dumps({"cursor": self._cursor}))
         os.replace(tmp, self._state_path)
 
+    def _commit_cursor(self, event: RoomEvent) -> None:
+        """Advance the cursor past this event and schedule a flush."""
+        if not event.created_at:
+            return
+        self._advance_cursor(event.created_at)
+        self._mark_state_dirty()
+
     def _advance_cursor(self, created_at: str) -> None:
         """Update the global cursor if this event is newer than what we've seen."""
         prev = self._cursor.get(_GLOBAL_CURSOR_KEY, "")
         if created_at > prev:
             self._cursor[_GLOBAL_CURSOR_KEY] = created_at
 
-    # --- Replay ---
+    # --- Reconnect catch-up ---
+    #
+    # The realtime stream is live-only with no resume cursor (see
+    # realtime.py), so every (re)subscribe -- including the very first one --
+    # runs this as Realtime's on_reconnect callback.
 
-    async def _refresh_room_types(self) -> list[dict]:
-        """Refresh the cached room-type map and return the room list."""
-        try:
-            rooms = await self.client.get_rooms()
-        except Exception:
-            logger.exception("Failed to fetch rooms")
-            return []
-        self._room_types = {r["id"]: r.get("type", "CHANNEL") for r in rooms}
-        return rooms
+    async def _catch_up(self) -> None:
+        """Page every allowlisted, joined room's timeline backwards from
+        "now", stopping at the stored cursor or a 1-hour hard cutoff,
+        whichever comes first.
 
-    async def _replay_missed(self, rooms: list[dict]) -> None:
-        """Replay events missed since last shutdown, up to 1 hour.
+        Every room's missed events are collected *before* anything is
+        dispatched, then merged and sorted into one ascending (oldest-first)
+        list and dispatched in that order. This matters because ``_dispatch``
+        dedups against a single global cursor: dispatching room-by-room would
+        advance that cursor to one room's newest missed event before a later
+        room's older-but-still-missed events were even looked at, and the
+        dedup check would then silently drop them. Collecting everything
+        first keeps the cursor advancing monotonically across the whole
+        catch-up, regardless of how many rooms are involved.
 
-        Walks every room visible to the bot. Cheap when nothing is new since
-        the cursor short-circuits replay events older than the cursor.
+        Known blind spot: thread replies (only visible via GetThreadEvents,
+        not the room timeline) and reactions aren't part of
+        GetRoomEvents' payload, so if either happens during a reconnect gap,
+        this catch-up won't replay it -- only a live realtime event would
+        have caught it.
         """
-        hard_cutoff = datetime.now(timezone.utc) - timedelta(hours=1)
+        try:
+            rooms = await self.client.list_rooms()
+        except Exception:
+            logger.exception("Catch-up: failed to list rooms")
+            return
+
+        self._refresh_room_kinds(rooms)
+
+        hard_cutoff = _format_cutoff(
+            datetime.now(timezone.utc) - timedelta(hours=_CATCH_UP_HOURS)
+        )
         cursor_ts = self._cursor.get(_GLOBAL_CURSOR_KEY, "")
 
-        replayed = 0
-        for room in rooms:
-            if self.config.rooms and room["id"] not in self.config.rooms:
+        pending: list[tuple[str, RoomTimelineEvent, RoomTimelineIncludes | None]] = []
+        for rws in rooms:
+            room = rws.room
+            if room is None or not room.id:
                 continue
-            if not self.config.dms and room.get("type") == "DM":
+            if not rws.viewer_state or not rws.viewer_state.is_member:
                 continue
-            try:
-                page = await self.client.get_room_events(
-                    "", room["id"], limit=50
-                )
-            except Exception:
-                logger.debug("Skipping replay for room %s: no access", room["id"])
+            if self.config.rooms and room.id not in self.config.rooms:
+                continue
+            if not self.config.dms and room.kind == RoomKind.DM:
                 continue
 
-            events = page.get("events", []) if isinstance(page, dict) else page
-            # Events come newest-first; reverse for chronological processing
-            for event_data in reversed(events):
-                created_at = event_data.get("createdAt", "")
-
-                try:
-                    event_time = datetime.fromisoformat(
-                        created_at.replace("Z", "+00:00")
-                    )
-                except (ValueError, AttributeError):
-                    continue
-                if event_time < hard_cutoff:
-                    continue
-
-                if cursor_ts and created_at <= cursor_ts:
-                    continue
-
-                try:
-                    event = parse_room_event(event_data)
-                    await self._dispatch(event)
-                    replayed += 1
-                except Exception:
-                    logger.debug("Skipping unprocessable replay event")
-
-        if replayed:
-            logger.info("Replayed %d missed events", replayed)
-
-        self._save_state()
-
-    # --- Lifecycle ---
-
-    async def _ensure_session(self) -> None:
-        """Log in with email/password if no session cookie is set."""
-        if self.config.session:
-            return
-        if not self.config.email or not self.config.password:
-            return
-        logger.info("Logging in as %s...", self.config.email)
-        self.config.session = await login(
-            self.config.instance, self.config.email, self.config.password,
-        )
-        self.client = Client(self.config)
-        self._subscriptions = SubscriptionManager(self.config)
-        logger.info("Login successful")
-
-    async def start(self) -> None:
-        """Connect to the API, verify auth, and start subscriptions."""
-        await self._ensure_session()
-
-        me_data = await self.client.me()
-        if not me_data:
-            raise RuntimeError(
-                "Authentication failed. Set CHATTO_SESSION or CHATTO_EMAIL + CHATTO_PASSWORD."
+            pending.extend(
+                await self._collect_missed_room_events(room.id, cursor_ts, hard_cutoff)
             )
 
-        self.user = User(
-            id=me_data["id"],
-            login=me_data["login"],
-            display_name=me_data["displayName"],
-            avatar_url=me_data.get("avatarUrl"),
-            presence_status=me_data.get("presenceStatus", "OFFLINE"),
-        )
-        logger.info(
-            "Authenticated as %s (%s)", self.user.display_name, self.user.login
+        pending.sort(key=lambda item: item[0])  # oldest-first, across all rooms
+
+        replayed = 0
+        for _, tev, includes in pending:
+            try:
+                if await self._dispatch_timeline_event(tev, includes):
+                    replayed += 1
+            except Exception:
+                logger.exception("Catch-up: failed to dispatch event %s", tev.id)
+
+        if replayed:
+            logger.info("Catch-up replayed %d missed events", replayed)
+        self._save_state()
+
+    async def _collect_missed_room_events(
+        self, room_id: str, cursor_ts: str, hard_cutoff: str
+    ) -> list[tuple[str, RoomTimelineEvent, RoomTimelineIncludes | None]]:
+        """Page one room's timeline backwards via the opaque ``before``
+        cursor, collecting events newer than ``cursor_ts`` and no older than
+        ``hard_cutoff``. Doesn't dispatch anything -- returns
+        ``(created_at, event, includes)`` tuples so ``_catch_up`` can merge
+        and sort them against every other room's missed events before
+        dispatching once, chronologically.
+        """
+        collected: list[tuple[str, RoomTimelineEvent, RoomTimelineIncludes | None]] = []
+        before: str | None = None
+
+        for _ in range(_CATCH_UP_MAX_PAGES):
+            try:
+                page = await self.client.get_room_events(
+                    room_id, limit=_CATCH_UP_PAGE_LIMIT, before=before
+                )
+            except Exception:
+                logger.debug(
+                    "Catch-up: skipping room %s (no access)", room_id, exc_info=True
+                )
+                return collected
+
+            events = list(page.events)
+            if not events:
+                return collected
+
+            # Events come oldest-first *within* a page (see GetRoomEvents in
+            # cli/internal/core/room_events.go). Scan newest-to-oldest --
+            # i.e. in reverse -- to find the stop point: the first event
+            # at/older than the stored cursor or the hard cutoff. Collecting
+            # while walking in reverse also means each page's slice of
+            # `collected` comes out newest-first, but that's fine since the
+            # caller sorts everything by timestamp before dispatching.
+            stop = False
+            for tev in reversed(events):
+                ts = format_cursor(tev.created_at)
+                if (cursor_ts and ts <= cursor_ts) or (ts and ts < hard_cutoff):
+                    stop = True
+                    break
+                collected.append((ts, tev, page.includes))
+
+            if stop or not page.has_older:
+                return collected
+
+            before = page.start_cursor
+            if not before:
+                return collected
+
+        return collected
+
+    async def _dispatch_timeline_event(
+        self, tev: RoomTimelineEvent, includes: RoomTimelineIncludes | None
+    ) -> bool:
+        """Adapt one ``RoomTimelineEvent`` (from GetRoomEvents) into a
+        RoomEvent and dispatch it.
+
+        Unlike realtime hydration, the message body is already inline
+        (``message_posted`` carries the full ``Message``), so no extra fetch
+        is needed; the actor is resolved from the page's ``includes`` map
+        when present, falling back to UserCache otherwise. Returns whatever
+        ``Bot._dispatch`` returns -- whether the event actually reached
+        handlers, as opposed to being cursor-deduped or filtered out.
+        """
+        oneof = tev.event
+        if oneof is None:
+            return False
+        field = oneof.field
+
+        message = oneof.value.message if field == "message_posted" else None
+
+        actor = None
+        if tev.actor_id:
+            if includes is not None:
+                actor = includes.users.get(tev.actor_id)
+            if actor is None and self._will_dispatch(field):
+                actor = await self.users.get(tev.actor_id)
+
+        room_event = parse_envelope(tev, message=message, actor=actor)
+        return await self._dispatch(room_event)
+
+    # --- Auth / lifecycle ---
+
+    async def _handle_unauthenticated(self) -> None:
+        """Called whenever the server rejects our bearer token (RPC or
+        realtime). Re-runs login in place; the realtime supervisor loop
+        (``_run_realtime``) restarts the stream afterward."""
+        logger.warning("Credential rejected by server, attempting relogin")
+        try:
+            await self.transport.relogin()
+        except AuthError:
+            logger.exception("Relogin failed: no identifier/password configured")
+        except Exception:
+            logger.exception("Relogin failed")
+
+    async def _presence_loop(self) -> None:
+        """Background task: refresh presence on an interval (see
+        `_PRESENCE_INTERVAL_SECONDS`)."""
+        while True:
+            await asyncio.sleep(_PRESENCE_INTERVAL_SECONDS)
+            try:
+                await self.client.update_presence("PRESENCE_STATUS_ONLINE")
+            except Unauthenticated:
+                await self._handle_unauthenticated()
+            except Exception:
+                logger.warning("Could not refresh presence", exc_info=True)
+
+    async def _run_realtime(self) -> None:
+        """Supervises the realtime stream: relogin-and-restart on
+        UNAUTHENTICATED, give up (but leave the rest of the bot running) on
+        a server-driven RealtimeStopped, return once `close()` has called
+        `realtime.stop()`."""
+        while not self._closed:
+            try:
+                await self.realtime.run(self._on_envelope, self._catch_up)
+            except Unauthenticated:
+                logger.warning("Realtime rejected credentials, relogging in")
+                await self._handle_unauthenticated()
+                continue
+            except RealtimeStopped:
+                logger.error(
+                    "Realtime connection stopped by server; live events are "
+                    "now disabled for this run"
+                )
+                return
+            else:
+                return  # run() only returns normally after stop()
+
+    async def _resolve_viewer(self) -> User:
+        viewer = await self.client.get_viewer()
+        profile = viewer.profile if viewer is not None else None
+        if profile is None:
+            raise RuntimeError("Authentication failed: GetViewer returned no profile")
+        return User(
+            id=profile.id,
+            login=profile.login,
+            display_name=profile.display_name,
+            avatar_url=profile.avatar_url,
+            presence_status=normalize_presence_status(profile.presence_status),
         )
 
+    async def start(self) -> None:
+        """Log in (if needed), verify auth, and start the realtime stream."""
+        if not self.transport.token and not self.transport.session:
+            if not (self.transport.identifier and self.transport.password):
+                raise RuntimeError(
+                    "Authentication failed. Set CHATTO_TOKEN, or CHATTO_SESSION, "
+                    "or CHATTO_EMAIL + CHATTO_PASSWORD."
+                )
+            await self.transport.relogin()
+
+        self.user = await self._resolve_viewer()
+        logger.info("Authenticated as %s (%s)", self.user.display_name, self.user.login)
+
         try:
-            await self.client.update_presence("ONLINE")
+            await self.client.update_presence("PRESENCE_STATUS_ONLINE")
             logger.info("Presence set to ONLINE")
         except Exception:
-            logger.warning("Could not set presence (server may not support it)")
+            logger.warning("Could not set presence (server may not support it)", exc_info=True)
 
         for ext in self.config.extensions:
             try:
@@ -514,10 +779,8 @@ class Bot:
             except Exception:
                 logger.exception("Failed to load extension: %s", ext)
 
-        rooms = await self._refresh_room_types()
-        await self._replay_missed(rooms)
-
-        self._subscriptions.start(self._dispatch)
+        self._presence_task = asyncio.create_task(self._presence_loop())
+        self._realtime_task = asyncio.create_task(self._run_realtime())
 
     async def close(self) -> None:
         """Gracefully shut down (idempotent)."""
@@ -526,7 +789,17 @@ class Bot:
         self._closed = True
         logger.info("Shutting down...")
         self._save_state()
-        await self._subscriptions.stop()
+
+        self.realtime.stop()
+        for task in (self._realtime_task, self._presence_task):
+            if task is not None:
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+                except Exception:
+                    logger.debug("Background task raised during shutdown", exc_info=True)
 
         for name in list(self._cogs.keys()):
             await self.remove_cog(name)
@@ -537,34 +810,39 @@ class Bot:
             self._stop_event.set()
 
     async def _reload(self) -> None:
-        """Reload config, reconnect subscriptions, and reload extensions."""
+        """Reload config, rebuild the transport/client/realtime stack, and
+        reload extensions (SIGHUP handler)."""
         logger.info("Reloading...")
         self._save_state()
 
-        await self._subscriptions.stop()
+        self.realtime.stop()
+        for task in (self._realtime_task, self._presence_task):
+            if task is not None:
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
         await self.client.close()
 
         self.config = BotConfig.load(self._config_path, **self._init_kwargs)
-        self.client = Client(self.config)
-        self._subscriptions = SubscriptionManager(self.config)
+        self.transport = self._build_transport()
+        self.client = Client(self.transport)
+        self.users = UserCache(self.client)
+        self.hydrator = Hydrator(self.client, self.users)
+        self.realtime = Realtime(self.transport)
+        self._room_kinds = {}
 
-        await self._ensure_session()
+        if not self.transport.token and not self.transport.session:
+            if self.transport.identifier and self.transport.password:
+                await self.transport.relogin()
 
-        me_data = await self.client.me()
-        if not me_data:
-            logger.error("Authentication failed after reload, check session")
+        try:
+            self.user = await self._resolve_viewer()
+        except Exception:
+            logger.exception("Authentication failed after reload")
             return
-
-        self.user = User(
-            id=me_data["id"],
-            login=me_data["login"],
-            display_name=me_data["displayName"],
-            avatar_url=me_data.get("avatarUrl"),
-            presence_status=me_data.get("presenceStatus", "OFFLINE"),
-        )
-        logger.info(
-            "Re-authenticated as %s (%s)", self.user.display_name, self.user.login
-        )
+        logger.info("Re-authenticated as %s (%s)", self.user.display_name, self.user.login)
 
         for ext_name in list(self._extensions.keys()):
             try:
@@ -572,10 +850,8 @@ class Bot:
             except Exception:
                 logger.exception("Failed to reload extension: %s", ext_name)
 
-        rooms = await self._refresh_room_types()
-        await self._replay_missed(rooms)
-
-        self._subscriptions.start(self._dispatch)
+        self._presence_task = asyncio.create_task(self._presence_loop())
+        self._realtime_task = asyncio.create_task(self._run_realtime())
 
         logger.info("Reload complete")
 
