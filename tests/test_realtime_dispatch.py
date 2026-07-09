@@ -29,6 +29,7 @@ from chatto_bot.client import Unauthenticated
 from chatto_bot.command import Command
 from chatto_bot.event import EventHandler
 from chatto_bot.hydrate import HydratedEvent
+from chatto_bot.types import User
 
 
 def _envelope(field: str, payload, *, actor_id: str = "U1") -> rt.RealtimeEventEnvelope:
@@ -40,6 +41,53 @@ def _envelope(field: str, payload, *, actor_id: str = "U1") -> rt.RealtimeEventE
         ),
         event=Oneof(field, payload),
     )
+
+
+class TestCommandContent:
+    """The two command triggers: the ``!`` prefix and a leading @mention of the bot.
+
+    The fixture bot has login ``testbot`` and display name ``Test Bot`` (a space,
+    so not a single-token mention handle).
+    """
+
+    def test_prefix_trigger(self, bot):
+        assert bot._command_content("!ping") == "ping"
+        assert bot._command_content("!remind me in 5m") == "remind me in 5m"
+
+    def test_bare_prefix_dispatches_to_no_command(self, bot):
+        assert bot._command_content("!") == ""
+
+    def test_mention_by_login(self, bot):
+        assert bot._command_content("@testbot ping") == "ping"
+
+    def test_mention_is_case_insensitive(self, bot):
+        assert bot._command_content("@TestBot ping") == "ping"
+
+    def test_mention_by_single_token_display_name(self, bot):
+        bot.user = User(id="Ubot", login="testbot", display_name="Chabotto")
+        assert bot._command_content("@Chabotto ping") == "ping"
+
+    def test_multiword_display_name_is_not_a_handle(self, bot):
+        # display name "Test Bot" has a space, so "@Test Bot" is not a trigger
+        assert bot._command_content("@Test Bot ping") is None
+
+    def test_mention_must_be_at_start(self, bot):
+        assert bot._command_content("hey @testbot ping") is None
+
+    def test_mention_requires_a_word_boundary(self, bot):
+        # the login must be followed by whitespace or end, not more name chars
+        assert bot._command_content("@testbottt ping") is None
+
+    def test_bare_mention_dispatches_to_no_command(self, bot):
+        assert bot._command_content("@testbot") == ""
+
+    def test_plain_message_is_not_a_command(self, bot):
+        assert bot._command_content("hello @testbot how are you") is None
+        assert bot._command_content("") is None
+
+    def test_leading_whitespace_tolerated(self, bot):
+        assert bot._command_content("  !ping") == "ping"
+        assert bot._command_content("  @testbot ping") == "ping"
 
 
 class TestWillDispatch:

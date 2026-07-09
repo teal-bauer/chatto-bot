@@ -7,6 +7,7 @@ import importlib
 import json
 import logging
 import os
+import re
 import signal
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -419,8 +420,9 @@ class Bot:
         async def handle() -> None:
             if etype == "message_posted":
                 body = getattr(event.event, "body", None)
-                if body and body.startswith(self.config.prefix):
-                    await self._dispatch_command(ctx, body)
+                content = self._command_content(body or "")
+                if content is not None:
+                    await self._dispatch_command(ctx, content)
 
             for handler in self._event_handlers:
                 if handler.event_type == etype and handler.matches(ctx):
@@ -466,9 +468,43 @@ class Bot:
             if room is not None and room.id:
                 self._room_kinds[room.id] = room.kind == RoomKind.DM
 
-    async def _dispatch_command(self, ctx: Context, body: str) -> None:
-        """Parse and dispatch a command from a message body."""
-        content = body[len(self.config.prefix) :]
+    def _command_content(self, body: str) -> str | None:
+        """Return the command text if a message is addressed to the bot, else None.
+
+        Two triggers, both only at the start of the message:
+        - the configured prefix, e.g. ``!ping``
+        - a mention of the bot, e.g. ``@ChattoBot ping``. Chatto encodes mentions
+          as plain ``@login`` text (case-insensitive); we also accept the bot's
+          display name when it is a single token, so ``@Chabotto ping`` works too.
+
+        The returned content is the text after the trigger (empty string for a
+        bare trigger, which dispatches to no command).
+        """
+        stripped = body.lstrip()
+        if not stripped:
+            return None
+
+        prefix = self.config.prefix
+        if prefix and stripped.startswith(prefix):
+            return stripped[len(prefix) :].lstrip()
+
+        names = []
+        if self.user:
+            if self.user.login:
+                names.append(self.user.login)
+            display = self.user.display_name
+            if display and not any(c.isspace() for c in display):
+                names.append(display)
+        if names:
+            alternation = "|".join(re.escape(n) for n in names)
+            match = re.match(rf"@(?:{alternation})(?=\s|$)", stripped, re.IGNORECASE)
+            if match:
+                return stripped[match.end() :].lstrip()
+
+        return None
+
+    async def _dispatch_command(self, ctx: Context, content: str) -> None:
+        """Parse and dispatch a command from the post-trigger command text."""
         parts = content.split(None, 1)
         if not parts:
             return
