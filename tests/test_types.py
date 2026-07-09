@@ -1,17 +1,22 @@
-"""Tests for types.py — realtime envelope parsing, event-name table, cursors."""
+"""Tests for types.py — realtime envelope parsing, event-name table, cursors.
+
+Realtime envelopes are now real google-protobuf messages from chattolib's
+bundled ``realtime_pb2`` (Google protobuf, not the old protobuf-py runtime),
+and hydrated resources (``Message``/``User``) are chattolib's own dataclasses
+-- see ``chattolib.types``. ``_FakeEnvelope`` stands in only for the "oneof
+case our code doesn't model" test, since a real protobuf message can't carry
+a field that isn't in its schema.
+"""
 
 from __future__ import annotations
 
 import datetime
 
 import pytest
-from protobuf import Oneof
-from protobuf.wkt import Timestamp
+from chattolib._pb.chatto.realtime.v1 import realtime_pb2 as rt
+from chattolib.types import Message, PresenceStatus, User as ChattolibUser
+from google.protobuf.timestamp_pb2 import Timestamp
 
-from chatto_bot._pb.chatto.api.v1.message_types_pb import Message
-from chatto_bot._pb.chatto.api.v1.users_pb import User as ProtoUser
-from chatto_bot._pb.chatto.realtime.v1 import realtime_pb as rt
-from chatto_bot._pb.chatto.api.v1.presence_pb import PresenceStatus
 from chatto_bot.types import (
     MessageDeletedEvent,
     MessagePostedEvent,
@@ -30,28 +35,64 @@ from chatto_bot.types import (
 )
 
 
-def _envelope(field: str, payload, *, id="E1", actor_id="U1", created_at=None) -> rt.RealtimeEventEnvelope:
+def _ts(dt: datetime.datetime) -> Timestamp:
+    ts = Timestamp()
+    ts.FromDatetime(dt)
+    return ts
+
+
+def _envelope(
+    field: str, payload, *, id="E1", actor_id="U1", created_at=None
+) -> rt.RealtimeEventEnvelope:
     return rt.RealtimeEventEnvelope(
         id=id,
         actor_id=actor_id,
-        created_at=created_at or Timestamp.from_datetime(
-            datetime.datetime(2026, 1, 1, tzinfo=datetime.timezone.utc)
-        ),
-        event=Oneof(field, payload),
+        created_at=created_at
+        or _ts(datetime.datetime(2026, 1, 1, tzinfo=datetime.timezone.utc)),
+        **{field: payload},
     )
+
+
+class _FakeEnvelope:
+    """Stands in for a realtime envelope carrying an oneof case this module
+    doesn't model -- a real protobuf message can't hold a field its schema
+    doesn't define, so this fakes just enough of the duck-typed protocol
+    (``WhichOneof``/``HasField``/attribute access) to exercise that path."""
+
+    def __init__(self, field: str, payload, *, id="E1", actor_id="U1"):
+        self._field = field
+        self.id = id
+        self.actor_id = actor_id
+        setattr(self, field, payload)
+
+    def WhichOneof(self, name: str) -> str:
+        assert name == "event"
+        return self._field
+
+    def HasField(self, name: str) -> bool:
+        return False
 
 
 class TestEventName:
     def test_one_to_one_case(self):
-        env = _envelope("reaction_added", rt.RealtimeReactionEvent(room_id="R1", message_event_id="E1", emoji="heart"))
+        env = _envelope(
+            "reaction_added",
+            rt.RealtimeReactionEvent(room_id="R1", message_event_id="E1", emoji="heart"),
+        )
         assert event_name(env) == "reaction_added"
 
     def test_message_posted(self):
-        env = _envelope("message_posted", rt.RealtimeMessagePostedEvent(room_id="R1", message_event_id="E1"))
+        env = _envelope(
+            "message_posted",
+            rt.RealtimeMessagePostedEvent(room_id="R1", message_event_id="E1"),
+        )
         assert event_name(env) == "message_posted"
 
     def test_renames(self):
-        edited = _envelope("message_edited", rt.RealtimeMessageEditedEvent(room_id="R1", message_event_id="E1"))
+        edited = _envelope(
+            "message_edited",
+            rt.RealtimeMessageEditedEvent(room_id="R1", message_event_id="E1"),
+        )
         assert event_name(edited) == "message_updated"
 
         retracted = _envelope(
@@ -67,7 +108,7 @@ class TestEventName:
         assert event_name(succeeded) == "video_processing_completed"
 
     def test_unmodeled_oneof_case_is_unknown(self):
-        env = _envelope("some_future_event", rt.RealtimeRoomEvent(room_id="R1"))
+        env = _FakeEnvelope("some_future_event", rt.RealtimeRoomEvent(room_id="R1"))
         assert event_name(env) == "unknown"
 
     def test_empty_oneof_is_unknown(self):
@@ -78,10 +119,13 @@ class TestEventName:
 class TestParseEnvelope:
     def test_message_posted_uses_hydrated_message_over_signal(self):
         env = _envelope(
-            "message_posted", rt.RealtimeMessagePostedEvent(room_id="R-signal", message_event_id="E1")
+            "message_posted",
+            rt.RealtimeMessagePostedEvent(room_id="R-signal", message_event_id="E1"),
         )
-        message = Message(id="E1", room_id="R-hydrated", body="hello world")
-        actor = ProtoUser(id="U1", login="alice", display_name="Alice")
+        message = Message(
+            id="E1", room_id="R-hydrated", created_at=None, actor_id="U1", body="hello world"
+        )
+        actor = ChattolibUser(id="U1", login="alice", display_name="Alice")
 
         room_event = parse_envelope(env, message=message, actor=actor)
 
@@ -98,7 +142,8 @@ class TestParseEnvelope:
         """Defensive fallback for direct parse_envelope() use; normal dispatch
         always hydrates message_posted (see hydrate.py)."""
         env = _envelope(
-            "message_posted", rt.RealtimeMessagePostedEvent(room_id="R-signal", message_event_id="E1")
+            "message_posted",
+            rt.RealtimeMessagePostedEvent(room_id="R-signal", message_event_id="E1"),
         )
         room_event = parse_envelope(env)
         assert isinstance(room_event.event, MessagePostedEvent)
@@ -108,7 +153,9 @@ class TestParseEnvelope:
     def test_rename_builds_correct_dataclass(self):
         env = _envelope(
             "message_retracted",
-            rt.RealtimeMessageRetractedEvent(room_id="R1", message_event_id="E1", reason="spam"),
+            rt.RealtimeMessageRetractedEvent(
+                room_id="R1", message_event_id="E1", reason="spam"
+            ),
         )
         room_event = parse_envelope(env)
         assert isinstance(room_event.event, MessageDeletedEvent)
@@ -116,7 +163,8 @@ class TestParseEnvelope:
 
     def test_message_edited_builds_updated_dataclass(self):
         env = _envelope(
-            "message_edited", rt.RealtimeMessageEditedEvent(room_id="R1", message_event_id="E9")
+            "message_edited",
+            rt.RealtimeMessageEditedEvent(room_id="R1", message_event_id="E9"),
         )
         room_event = parse_envelope(env)
         assert isinstance(room_event.event, MessageUpdatedEvent)
@@ -130,9 +178,12 @@ class TestParseEnvelope:
         message_updated handler should see the edited body without an extra
         ctx.fetch_message() round trip."""
         env = _envelope(
-            "message_edited", rt.RealtimeMessageEditedEvent(room_id="R1", message_event_id="E9")
+            "message_edited",
+            rt.RealtimeMessageEditedEvent(room_id="R1", message_event_id="E9"),
         )
-        message = Message(id="E9", room_id="R1", body="edited text")
+        message = Message(
+            id="E9", room_id="R1", created_at=None, actor_id="U1", body="edited text"
+        )
 
         room_event = parse_envelope(env, message=message)
 
@@ -165,7 +216,7 @@ class TestParseEnvelope:
         assert room_event.event.asset_id == "A1"
 
     def test_unmodeled_oneof_case_becomes_unknown_event(self):
-        env = _envelope("some_future_event", rt.RealtimeRoomEvent(room_id="R1"))
+        env = _FakeEnvelope("some_future_event", rt.RealtimeRoomEvent(room_id="R1"))
         room_event = parse_envelope(env)
         assert isinstance(room_event.event, UnknownEvent)
         assert room_event.event.typename == "some_future_event"
@@ -178,12 +229,11 @@ class TestParseEnvelope:
 
 
 class TestNormalizePresenceStatus:
-    """D3: an unset/UNSPECIFIED proto presence_status must normalize to
-    "OFFLINE" (the dataclass default, and the value GraphQL-era bots
-    compare against), not the literal enum name "UNSPECIFIED". Proto enum
-    scalars are never None -- unset reads as the zero value -- so a bare
-    ``str(status)`` surfaces "UNSPECIFIED" for a user who simply never set
-    a presence."""
+    """D3: an unset/UNSPECIFIED presence status must normalize to "OFFLINE"
+    (the dataclass default, and the value GraphQL-era bots compare against),
+    not the literal enum name. chattolib's ``PresenceStatus`` ``str()``
+    gives the full wire form (``"PRESENCE_STATUS_ONLINE"``), so
+    ``normalize_presence_status`` must also strip that prefix."""
 
     def test_unspecified_normalizes_to_offline(self):
         assert normalize_presence_status(PresenceStatus.UNSPECIFIED) == "OFFLINE"
@@ -198,7 +248,7 @@ class TestNormalizePresenceStatus:
         """End-to-end: an actor with an unset presence_status must not
         surface "UNSPECIFIED" on the public User dataclass."""
         env = _envelope("room_archived", rt.RealtimeRoomEvent(room_id="R1"))
-        actor = ProtoUser(id="U1", login="alice", display_name="Alice")  # presence_status unset
+        actor = ChattolibUser(id="U1", login="alice", display_name="Alice")  # presence unset
 
         room_event = parse_envelope(env, actor=actor)
 
@@ -207,21 +257,25 @@ class TestNormalizePresenceStatus:
 
 class TestFormatCursor:
     def test_fixed_width(self):
-        ts = Timestamp.from_datetime(
-            datetime.datetime(2026, 3, 4, 5, 6, 7, 890, tzinfo=datetime.timezone.utc)
-        )
+        ts = _ts(datetime.datetime(2026, 3, 4, 5, 6, 7, 890, tzinfo=datetime.timezone.utc))
         cursor = format_cursor(ts)
         assert cursor == "2026-03-04T05:06:07.000890Z"
+
+    def test_accepts_plain_datetime(self):
+        """chattolib dataclasses (Message.updated_at, ThreadSummary.last_reply_at,
+        ...) parse timestamps eagerly into plain ``datetime`` objects."""
+        dt = datetime.datetime(2026, 3, 4, 5, 6, 7, 890, tzinfo=datetime.timezone.utc)
+        assert format_cursor(dt) == "2026-03-04T05:06:07.000890Z"
 
     def test_none_returns_empty_string(self):
         assert format_cursor(None) == ""
 
     def test_lexical_ordering_matches_chronological(self):
         earlier = format_cursor(
-            Timestamp.from_datetime(datetime.datetime(2026, 1, 1, tzinfo=datetime.timezone.utc))
+            _ts(datetime.datetime(2026, 1, 1, tzinfo=datetime.timezone.utc))
         )
         later = format_cursor(
-            Timestamp.from_datetime(datetime.datetime(2026, 1, 2, tzinfo=datetime.timezone.utc))
+            _ts(datetime.datetime(2026, 1, 2, tzinfo=datetime.timezone.utc))
         )
         assert earlier < later
 

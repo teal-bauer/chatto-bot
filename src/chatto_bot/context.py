@@ -14,7 +14,7 @@ from .client import ChattoError
 from .types import MessagePostedEvent, RoomEvent, User
 
 if TYPE_CHECKING:
-    from ._pb.chatto.api.v1.message_types_pb import Message
+    from chattolib.types import Message
     from .bot import Bot
 
 logger = logging.getLogger(__name__)

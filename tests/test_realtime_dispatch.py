@@ -1,8 +1,8 @@
 """Tests for the realtime dispatch pipeline in bot.py: hydration gating,
 room-kind/user-cache invalidation, reconnect catch-up, and relogin-on-401.
 
-These exercise the seams introduced by the ConnectRPC/realtime rewrite that
-have no equivalent in the old GraphQL-era test suite.
+These exercise the seams introduced by the chattolib rewrite that have no
+equivalent in the framework-only test suite (test_bot.py etc).
 """
 
 from __future__ import annotations
@@ -11,20 +11,12 @@ import datetime
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from protobuf import Oneof
-from protobuf.wkt import Timestamp
+from chattolib._pb.chatto.realtime.v1 import realtime_pb2 as rt
+from chattolib.types import Message, Room, RoomKind, RoomViewerState, RoomWithViewerState
+from chattolib.types import TimelineEvent, TimelinePage
+from chattolib.types import User as ChattolibUser
+from google.protobuf.timestamp_pb2 import Timestamp
 
-from chatto_bot._pb.chatto.api.v1.message_types_pb import Message
-from chatto_bot._pb.chatto.api.v1.room_directory_pb import RoomViewerState, RoomWithViewerState
-from chatto_bot._pb.chatto.api.v1.room_timeline_pb import (
-    RoomMessagePosted,
-    RoomTimelineEvent,
-    RoomTimelineIncludes,
-    RoomTimelinePage,
-)
-from chatto_bot._pb.chatto.api.v1.rooms_pb import Room, RoomKind
-from chatto_bot._pb.chatto.api.v1.users_pb import User as ProtoUser
-from chatto_bot._pb.chatto.realtime.v1 import realtime_pb as rt
 from chatto_bot.client import Unauthenticated
 from chatto_bot.command import Command
 from chatto_bot.event import EventHandler
@@ -32,14 +24,18 @@ from chatto_bot.hydrate import HydratedEvent
 from chatto_bot.types import User
 
 
+def _ts(dt: datetime.datetime) -> Timestamp:
+    ts = Timestamp()
+    ts.FromDatetime(dt)
+    return ts
+
+
 def _envelope(field: str, payload, *, actor_id: str = "U1") -> rt.RealtimeEventEnvelope:
     return rt.RealtimeEventEnvelope(
         id="E1",
         actor_id=actor_id,
-        created_at=Timestamp.from_datetime(
-            datetime.datetime(2026, 1, 1, tzinfo=datetime.timezone.utc)
-        ),
-        event=Oneof(field, payload),
+        created_at=_ts(datetime.datetime(2026, 1, 1, tzinfo=datetime.timezone.utc)),
+        **{field: payload},
     )
 
 
@@ -150,7 +146,9 @@ class TestOnEnvelope:
             called = True
 
         bot._event_handlers.append(EventHandler(event_type="message_posted", callback=handler))
-        env = _envelope("message_posted", rt.RealtimeMessagePostedEvent(room_id="R1", message_event_id="E1"))
+        env = _envelope(
+            "message_posted", rt.RealtimeMessagePostedEvent(room_id="R1", message_event_id="E1")
+        )
         bot.hydrator.hydrate = AsyncMock(return_value=None)
 
         await bot._on_envelope(env)
@@ -161,7 +159,10 @@ class TestOnEnvelope:
 class TestInvalidations:
     @pytest.mark.asyncio
     async def test_user_profile_updated_invalidates_user_cache(self, bot):
-        env = _envelope("user_profile_updated", rt.RealtimeUserProfileUpdatedEvent(user_id="U1", login="alice"))
+        env = _envelope(
+            "user_profile_updated",
+            rt.RealtimeUserProfileUpdatedEvent(user_id="U1", login="alice"),
+        )
         bot.hydrator.hydrate = AsyncMock(
             return_value=HydratedEvent(envelope=env, event_name="user_profile_updated")
         )
@@ -175,7 +176,9 @@ class TestInvalidations:
 
     @pytest.mark.asyncio
     async def test_presence_changed_invalidates_user_cache(self, bot):
-        env = _envelope("presence_changed", rt.RealtimePresenceChangedEvent(user_id="U2", status=1))
+        env = _envelope(
+            "presence_changed", rt.RealtimePresenceChangedEvent(user_id="U2", status=1)
+        )
         bot.hydrator.hydrate = AsyncMock(
             return_value=HydratedEvent(envelope=env, event_name="presence_changed")
         )
@@ -231,9 +234,9 @@ class TestIsDmResolution:
 
     @pytest.mark.asyncio
     async def test_ensure_room_kind_relogs_in_on_unauthenticated(self, bot):
-        from connectrpc.code import Code
-
-        bot.client.get_room = AsyncMock(side_effect=Unauthenticated(Code.UNAUTHENTICATED, "nope"))
+        bot.client.get_room = AsyncMock(
+            side_effect=Unauthenticated("unauthenticated", "nope")
+        )
         await bot._ensure_room_kind("R1")
         bot.transport.relogin.assert_awaited_once()
 
@@ -242,17 +245,17 @@ def _dt(hour: int, minute: int = 0, *, day: int = 1) -> datetime.datetime:
     return datetime.datetime(2026, 1, day, hour, minute, tzinfo=datetime.timezone.utc)
 
 
-def _ts(hour: int, minute: int = 0, *, day: int = 1) -> Timestamp:
-    return Timestamp.from_datetime(_dt(hour, minute, day=day))
-
-
-def _posted_tev(event_id: str, hour: int, minute: int = 0, *, day: int = 1, body: str = "!hi") -> RoomTimelineEvent:
-    message = Message(id=event_id, room_id="R1", body=body)
-    return RoomTimelineEvent(
+def _posted_tev(
+    event_id: str, hour: int, minute: int = 0, *, day: int = 1, body: str = "!hi", room_id: str = "R1"
+) -> TimelineEvent:
+    message = Message(id=event_id, room_id=room_id, created_at=None, actor_id="U1", body=body)
+    return TimelineEvent(
         id=event_id,
+        created_at=_dt(hour, minute, day=day),
         actor_id="U1",
-        created_at=_ts(hour, minute, day=day),
-        event=Oneof("message_posted", RoomMessagePosted(message=message)),
+        kind="message_posted",
+        message=message,
+        room_id=room_id,
     )
 
 
@@ -264,17 +267,23 @@ def _recent_dt(minutes_ago: float) -> datetime.datetime:
     return datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(minutes=minutes_ago)
 
 
-def _recent_posted_tev(event_id: str, minutes_ago: float, *, room_id: str = "R1", body: str = "!hi") -> RoomTimelineEvent:
-    message = Message(id=event_id, room_id=room_id, body=body)
-    return RoomTimelineEvent(
+def _recent_posted_tev(
+    event_id: str, minutes_ago: float, *, room_id: str = "R1", body: str = "!hi"
+) -> TimelineEvent:
+    message = Message(id=event_id, room_id=room_id, created_at=None, actor_id="U1", body=body)
+    return TimelineEvent(
         id=event_id,
+        created_at=_recent_dt(minutes_ago),
         actor_id="U1",
-        created_at=Timestamp.from_datetime(_recent_dt(minutes_ago)),
-        event=Oneof("message_posted", RoomMessagePosted(message=message)),
+        kind="message_posted",
+        message=message,
+        room_id=room_id,
     )
 
 
-def _room_with_viewer_state(room_id: str, *, is_member: bool = True, kind=RoomKind.CHANNEL) -> RoomWithViewerState:
+def _room_with_viewer_state(
+    room_id: str, *, is_member: bool = True, kind=RoomKind.CHANNEL
+) -> RoomWithViewerState:
     return RoomWithViewerState(
         room=Room(id=room_id, kind=kind),
         viewer_state=RoomViewerState(is_member=is_member),
@@ -289,13 +298,12 @@ class TestCollectMissedRoomEvents:
     @pytest.mark.asyncio
     async def test_collects_events_newer_than_cursor(self, bot):
         tev = _posted_tev("E2", 12, 0)
-        page = RoomTimelinePage(
+        page = TimelinePage(
             events=[tev],
             start_cursor="c1",
             end_cursor="c2",
             has_older=False,
             has_newer=False,
-            includes=RoomTimelineIncludes(users={}),
         )
         bot.client.get_room_events = AsyncMock(return_value=page)
 
@@ -311,15 +319,14 @@ class TestCollectMissedRoomEvents:
     async def test_stops_at_stored_cursor(self, bot):
         """An event at/older than the stored cursor stops paging and isn't
         collected."""
-        old_tev = RoomTimelineEvent(
+        old_tev = TimelineEvent(
             id="E-old",
+            created_at=datetime.datetime(2025, 6, 1, tzinfo=datetime.timezone.utc),
             actor_id="U1",
-            created_at=Timestamp.from_datetime(
-                datetime.datetime(2025, 6, 1, tzinfo=datetime.timezone.utc)
-            ),
-            event=Oneof("room_archived", MagicMock(room_id="R1")),
+            kind="room_archived",
+            room_id="R1",
         )
-        page = RoomTimelinePage(
+        page = TimelinePage(
             events=[old_tev], start_cursor="c1", end_cursor="c2", has_older=True, has_newer=False
         )
         bot.client.get_room_events = AsyncMock(return_value=page)
@@ -343,13 +350,12 @@ class TestCollectMissedRoomEvents:
         stale = _posted_tev("E-stale", 8, 0, body="!stale")
         newer1 = _posted_tev("E-newer1", 9, 0, body="!newer1")
         newer2 = _posted_tev("E-newer2", 9, 30, body="!newer2")
-        page = RoomTimelinePage(
+        page = TimelinePage(
             events=[stale, newer1, newer2],  # oldest-first, as the server sends them
             start_cursor="c1",
             end_cursor="c2",
             has_older=False,
             has_newer=False,
-            includes=RoomTimelineIncludes(users={}),
         )
         bot.client.get_room_events = AsyncMock(return_value=page)
 
@@ -377,13 +383,12 @@ class TestCatchUpDispatchOrder:
         e1 = _recent_posted_tev("E1", 30, body="!one")
         e2 = _recent_posted_tev("E2", 20, body="!two")
         e3 = _recent_posted_tev("E3", 10, body="!three")
-        page = RoomTimelinePage(
+        page = TimelinePage(
             events=[e1, e2, e3],
             start_cursor="c1",
             end_cursor="c2",
             has_older=False,
             has_newer=False,
-            includes=RoomTimelineIncludes(users={}),
         )
         bot.client.get_room_events = AsyncMock(return_value=page)
         bot.client.list_rooms = AsyncMock(return_value=[_room_with_viewer_state("R1")])
@@ -420,22 +425,20 @@ class TestCatchUpDispatchOrder:
 
         def get_room_events(room_id, *, limit, before=None):
             if room_id == "RA":
-                return RoomTimelinePage(
+                return TimelinePage(
                     events=[room_a_event],
                     start_cursor="ca1",
                     end_cursor="ca2",
                     has_older=False,
                     has_newer=False,
-                    includes=RoomTimelineIncludes(users={}),
                 )
             if room_id == "RB":
-                return RoomTimelinePage(
+                return TimelinePage(
                     events=[room_b_event_1, room_b_event_2],  # oldest-first
                     start_cursor="cb1",
                     end_cursor="cb2",
                     has_older=False,
                     has_newer=False,
-                    includes=RoomTimelineIncludes(users={}),
                 )
             raise AssertionError(f"unexpected room_id {room_id}")
 
@@ -487,14 +490,12 @@ class TestOnEnvelopeUnauthenticated:
         tears the connection down and reconnects -- which is what runs
         catch-up for whatever got missed while the token was bad.
         """
-        from connectrpc.code import Code
-
         bot.add_command(Command(name="ping", callback=AsyncMock()))
         env = _envelope(
             "message_posted", rt.RealtimeMessagePostedEvent(room_id="R1", message_event_id="E1")
         )
         bot.hydrator.hydrate = AsyncMock(
-            side_effect=Unauthenticated(Code.UNAUTHENTICATED, "token revoked")
+            side_effect=Unauthenticated("unauthenticated", "token revoked")
         )
 
         with pytest.raises(Unauthenticated):
@@ -506,15 +507,13 @@ class TestOnEnvelopeUnauthenticated:
 class TestRunRealtimeReauth:
     @pytest.mark.asyncio
     async def test_relogs_in_and_restarts_on_unauthenticated(self, bot):
-        from connectrpc.code import Code
-
         call_count = 0
 
         async def fake_run(on_envelope, on_reconnect):
             nonlocal call_count
             call_count += 1
             if call_count == 1:
-                raise Unauthenticated(Code.UNAUTHENTICATED, "expired")
+                raise Unauthenticated("unauthenticated", "expired")
             bot._closed = True  # let the supervisor loop exit next check
 
         bot.realtime.run = AsyncMock(side_effect=fake_run)

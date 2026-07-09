@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import logging
 
-from connectrpc.code import Code
-
 from chatto_bot import Bot, ChattoError, Cog, Context, command
 
 logger = logging.getLogger(__name__)
@@ -65,7 +63,7 @@ class Admin(Cog):
             await self.bot.client.leave_room(room_id)
             await ctx.reply(f"Left room `{room_id}`.")
         except ChattoError as e:
-            if e.code == Code.FAILED_PRECONDITION:
+            if e.code == "failed_precondition":
                 await ctx.reply(
                     f"Can't leave `{room_id}`: DM and universal rooms can't be left."
                 )

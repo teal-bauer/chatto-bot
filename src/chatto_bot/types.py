@@ -14,18 +14,21 @@ bot keeps running through API additions.
 
 from __future__ import annotations
 
+import datetime
 import logging
 from dataclasses import dataclass, field
 from typing import Any, TYPE_CHECKING
 
 if TYPE_CHECKING:
-    # Only used for type hints; parse_envelope/converters access proto
-    # objects duck-typed by attribute name, so types.py has no runtime
-    # dependency on _pb or the protobuf runtime.
-    from ._pb.chatto.api.v1.message_types_pb import Message as _ProtoMessage
-    from ._pb.chatto.api.v1.users_pb import User as _ProtoUser
-    from ._pb.chatto.realtime.v1.realtime_pb import RealtimeEventEnvelope
-    from protobuf.wkt import Timestamp
+    # Only used for type hints; parse_envelope/converters access chattolib
+    # objects (dataclasses for hydrated resources, google-protobuf messages
+    # for realtime payloads) duck-typed by attribute name, so types.py has no
+    # hard runtime dependency on either shape.
+    from chattolib.types import Message as _ChattolibMessage
+    from chattolib.types import TimelineEvent
+    from chattolib.types import User as _ChattolibUser
+    from chattolib._pb.chatto.realtime.v1.realtime_pb2 import RealtimeEventEnvelope
+    from google.protobuf.timestamp_pb2 import Timestamp
 
 logger = logging.getLogger(__name__)
 
@@ -619,42 +622,66 @@ class RoomEvent:
 
 # --- Proto -> dataclass converters ---
 #
-# These take generated protobuf-py message instances (accessed duck-typed by
-# attribute, so this module never imports the _pb packages at runtime) and
-# return the public dataclasses above.
+# These take either chattolib dataclasses (hydrated resources: Message,
+# User, ThreadSummary, ...) or google-protobuf messages (realtime payloads,
+# still accessed duck-typed by attribute) and return the public dataclasses
+# above. Both shapes expose the same snake_case attribute names, which is
+# what keeps most of this module oblivious to which one it was handed.
 
 
-def format_cursor(ts: Timestamp | None) -> str:
-    """Format a protobuf ``Timestamp`` as a fixed-width UTC ISO string.
+def format_cursor(ts: datetime.datetime | Timestamp | None) -> str:
+    """Format a timestamp as a fixed-width UTC ISO string.
 
-    Always emits 6 fractional digits so lexical string comparison stays
-    monotonic. The old GraphQL cursor format didn't guarantee a consistent
-    fractional-second width, so comparing a fixed-width cursor against an
-    old-format one is only best-effort across the upgrade boundary -- see
-    the migration note in the design doc.
+    Accepts either a plain ``datetime`` (chattolib dataclasses parse
+    timestamps eagerly) or a google-protobuf ``Timestamp`` (realtime payloads
+    are still raw protobuf). Always emits 6 fractional digits so lexical
+    string comparison stays monotonic. The old GraphQL cursor format didn't
+    guarantee a consistent fractional-second width, so comparing a
+    fixed-width cursor against an old-format one is only best-effort across
+    the upgrade boundary -- see the migration note in the design doc.
     """
     if ts is None:
         return ""
-    dt = ts.to_datetime()
+    dt = ts if isinstance(ts, datetime.datetime) else ts.ToDatetime()
     return dt.strftime("%Y-%m-%dT%H:%M:%S.%f") + "Z"
 
 
-def normalize_presence_status(raw: Any) -> str:
-    """Map a proto ``PresenceStatus`` enum value to the handler-facing string.
+_PRESENCE_STATUS_PREFIX = "PRESENCE_STATUS_"
 
-    Proto enum scalars are never ``None`` (unset reads as the zero value,
-    ``PRESENCE_STATUS_UNSPECIFIED``, whose ``str()`` is ``"UNSPECIFIED"``),
-    so a bare ``str(status)`` would surface "UNSPECIFIED" for a user who has
-    simply never set a presence. Normalize that (and any other falsy/missing
-    value) to ``"OFFLINE"`` -- the dataclass default and the value the
-    GraphQL-era API used to send, so bots comparing ``== "OFFLINE"`` keep
-    working.
+
+def normalize_presence_status(raw: Any) -> str:
+    """Map a presence status value to the handler-facing short string.
+
+    ``raw`` may be chattolib's ``PresenceStatus`` ``StrEnum`` (whose
+    ``str()`` is the full wire form, e.g. ``"PRESENCE_STATUS_ONLINE"``) or a
+    plain enum-name string pulled off a realtime protobuf field via
+    ``_enum_name`` (same full form). Either way this strips the
+    ``PRESENCE_STATUS_`` prefix and normalizes the unspecified/missing case
+    to ``"OFFLINE"`` -- the dataclass default and the value the GraphQL-era
+    API used to send, so bots comparing ``== "OFFLINE"`` keep working.
     """
     text = str(raw) if raw is not None else ""
+    text = text.removeprefix(_PRESENCE_STATUS_PREFIX)
     return text if text and text != "UNSPECIFIED" else "OFFLINE"
 
 
-def _user_from_proto(u: _ProtoUser) -> User:
+def _enum_name(message: Any, field_name: str, prefix: str = "") -> str:
+    """Get the symbolic name of a protobuf enum field's current value.
+
+    Plain google-protobuf enum fields read back as plain ``int``s (unlike
+    the old protobuf-py runtime, whose enum accessors already stringified to
+    a short name) -- ``str(message.field)`` would silently give back digits
+    like ``"1"``. Look the name up via the field's enum descriptor instead,
+    and strip ``prefix`` (the proto enum's constant prefix, e.g.
+    ``"NOTIFICATION_LEVEL_"``) to recover the short form bots have always
+    seen.
+    """
+    descriptor = message.DESCRIPTOR.fields_by_name[field_name]
+    name = descriptor.enum_type.values_by_number[getattr(message, field_name)].name
+    return name.removeprefix(prefix) if prefix else name
+
+
+def _user_from_proto(u: _ChattolibUser) -> User:
     custom_status = None
     if u.custom_status is not None:
         custom_status = CustomUserStatus(
@@ -734,24 +761,22 @@ def _link_preview_from_proto(lp: Any) -> LinkPreview:
     )
 
 
-def _thread_viewer_state_from_proto(vs: Any) -> ThreadViewerState:
-    return ThreadViewerState(is_following=vs.is_following, has_unread=vs.has_unread)
-
-
 def _thread_summary_from_proto(t: Any) -> ThreadSummary:
+    """``t`` is chattolib's ``ThreadSummary`` dataclass, which flattens
+    ``is_following``/``has_unread`` directly onto the summary -- unlike the
+    old protobuf shape, there's no nested ``viewer_state`` message to unwrap.
+    """
     return ThreadSummary(
         thread_root_event_id=t.thread_root_event_id,
         reply_count=t.reply_count,
         last_reply_at=format_cursor(t.last_reply_at) if t.last_reply_at else None,
         participant_preview_user_ids=list(t.participant_preview_user_ids),
         participant_count=t.participant_count,
-        viewer_state=_thread_viewer_state_from_proto(t.viewer_state)
-        if t.viewer_state is not None
-        else None,
+        viewer_state=ThreadViewerState(is_following=t.is_following, has_unread=t.has_unread),
     )
 
 
-def _message_posted_from_proto(signal: Any, message: _ProtoMessage | None) -> MessagePostedEvent:
+def _message_posted_from_proto(signal: Any, message: _ChattolibMessage | None) -> MessagePostedEvent:
     if message is None:
         # Hydration didn't run (or found nothing) -- fall back to the bare
         # invalidation signal so a handler at least gets room_id. Normal
@@ -798,7 +823,7 @@ _EVENT_BUILDERS: dict[str, Any] = {
         room_id=p.room_id, thread_root_event_id=p.thread_root_event_id
     ),
     "presence_changed": lambda p, m: PresenceChangedEvent(
-        user_id=p.user_id, status=str(p.status)
+        user_id=p.user_id, status=normalize_presence_status(_enum_name(p, "status"))
     ),
     "room_created": lambda p, m: RoomCreatedEvent(room_id=p.room_id),
     "room_updated": lambda p, m: RoomUpdatedEvent(room_id=p.room_id),
@@ -821,7 +846,9 @@ _EVENT_BUILDERS: dict[str, Any] = {
         notification_id=p.notification_id
     ),
     "notification_level_changed": lambda p, m: NotificationLevelChangedEvent(
-        room_id=p.room_id, level=str(p.level), effective_level=str(p.effective_level)
+        room_id=p.room_id,
+        level=_enum_name(p, "level", "NOTIFICATION_LEVEL_"),
+        effective_level=_enum_name(p, "effective_level", "NOTIFICATION_LEVEL_"),
     ),
     "thread_follow_changed": lambda p, m: ThreadFollowChangedEvent(
         room_id=p.room_id,
@@ -842,11 +869,15 @@ _EVENT_BUILDERS: dict[str, Any] = {
         user_id=p.user_id,
         emoji=p.emoji,
         text=p.text,
-        expires_at=format_cursor(p.expires_at) if p.expires_at else None,
+        # expires_at is a proto3-optional message field: an unset Timestamp
+        # still reads back as a (falsy-looking but truthy) default instance,
+        # so HasField -- not truthiness -- is what actually says "was this
+        # set".
+        expires_at=format_cursor(p.expires_at) if p.HasField("expires_at") else None,
     ),
     "user_custom_status_cleared": lambda p, m: UserCustomStatusClearedEvent(user_id=p.user_id),
     "server_user_preferences_updated": lambda p, m: ServerUserPreferencesUpdatedEvent(
-        timezone=p.timezone, time_format=str(p.time_format)
+        timezone=p.timezone, time_format=_enum_name(p, "time_format", "TIME_FORMAT_")
     ),
     "room_groups_updated": lambda p, m: RoomGroupsUpdatedEvent(changed=p.changed),
     "server_member_deleted": lambda p, m: ServerMemberDeletedEvent(user_id=p.user_id),
@@ -861,16 +892,24 @@ _EVENT_BUILDERS: dict[str, Any] = {
     ),
     "asset_deleted": lambda p, m: AssetDeletedEvent(asset_id=p.asset_id, room_id=p.room_id),
     "call_started": lambda p, m: CallStartedEvent(
-        room_id=p.room_id, call_id=p.call_id, source=str(p.source)
+        room_id=p.room_id,
+        call_id=p.call_id,
+        source=_enum_name(p, "source", "REALTIME_CALL_EVENT_SOURCE_"),
     ),
     "call_participant_joined": lambda p, m: CallParticipantJoinedEvent(
-        room_id=p.room_id, call_id=p.call_id, source=str(p.source)
+        room_id=p.room_id,
+        call_id=p.call_id,
+        source=_enum_name(p, "source", "REALTIME_CALL_EVENT_SOURCE_"),
     ),
     "call_participant_left": lambda p, m: CallParticipantLeftEvent(
-        room_id=p.room_id, call_id=p.call_id, source=str(p.source)
+        room_id=p.room_id,
+        call_id=p.call_id,
+        source=_enum_name(p, "source", "REALTIME_CALL_EVENT_SOURCE_"),
     ),
     "call_ended": lambda p, m: CallEndedEvent(
-        room_id=p.room_id, call_id=p.call_id, source=str(p.source)
+        room_id=p.room_id,
+        call_id=p.call_id,
+        source=_enum_name(p, "source", "REALTIME_CALL_EVENT_SOURCE_"),
     ),
     "mention_notification": lambda p, m: MentionNotificationEvent(
         room_id=p.room_id,
@@ -898,29 +937,25 @@ def event_name(envelope: RealtimeEventEnvelope) -> str:
     ``"unknown"`` if the envelope carries no event (oneof unset) or an
     oneof case this module doesn't model yet.
     """
-    oneof = envelope.event
-    if oneof is None:
-        return "unknown"
-    field_name = oneof.field
-    if field_name in _EVENT_BUILDERS:
+    field_name = envelope.WhichOneof("event")
+    if field_name is not None and field_name in _EVENT_BUILDERS:
         return _ONEOF_RENAMES.get(field_name, field_name)
     return "unknown"
 
 
 def parse_envelope(
     envelope: RealtimeEventEnvelope,
-    message: _ProtoMessage | None = None,
-    actor: _ProtoUser | None = None,
+    message: _ChattolibMessage | None = None,
+    actor: _ChattolibUser | None = None,
 ) -> RoomEvent:
     """Adapt a realtime envelope (plus anything hydrate.py fetched) to a RoomEvent.
 
-    ``message`` is the hydrated ``Message`` proto for ``message_posted``
+    ``message`` is the hydrated ``Message`` dataclass for ``message_posted``
     (ignored for every other event type). ``actor`` is the hydrated ``User``
-    proto for ``envelope.actor_id``, resolved through ``UserCache``.
+    dataclass for ``envelope.actor_id``, resolved through ``UserCache``.
     """
-    oneof = envelope.event
-    field_name = oneof.field if oneof is not None else None
-    payload = oneof.value if oneof is not None else None
+    field_name = envelope.WhichOneof("event")
+    payload = getattr(envelope, field_name) if field_name else None
 
     if field_name is not None and field_name in _EVENT_BUILDERS:
         inner: EventType = _EVENT_BUILDERS[field_name](payload, message)
@@ -928,10 +963,59 @@ def parse_envelope(
         logger.warning("Unmodeled realtime event oneof case: %s", field_name)
         inner = UnknownEvent(typename=field_name or "", raw={})
 
+    # created_at is a proto3-optional message field: an unset Timestamp
+    # still reads back as a default instance, not None, so HasField (not
+    # truthiness) says whether it was actually set.
+    created_at = envelope.created_at if envelope.HasField("created_at") else None
+
     return RoomEvent(
         actor_id=envelope.actor_id or "",
         event=inner,
         id=envelope.id or "",
-        created_at=format_cursor(envelope.created_at),
+        created_at=format_cursor(created_at),
         actor=_user_from_proto(actor) if actor is not None else None,
     )
+
+
+def room_event_from_timeline(
+    tev: TimelineEvent, actor: _ChattolibUser | None = None
+) -> RoomEvent:
+    """Adapt a hydrated ``chattolib.types.TimelineEvent`` (from
+    ``GetRoomEvents``, used for reconnect catch-up) into the same public
+    ``RoomEvent`` shape realtime dispatch produces.
+
+    Unlike a realtime envelope, ``TimelineEvent`` is already flat -- a plain
+    dataclass with a string ``kind`` and an inline ``message``, not a oneof
+    -- because chattolib parses the timeline response itself. Only the
+    kinds ``TimelineEvent.parse`` recognizes (``message_posted`` plus the
+    room lifecycle/membership events) can appear here; that's also the
+    historical set ``GetRoomEvents`` ever returned, so switching from the
+    old oneof-shaped timeline proto to this flat shape loses no coverage.
+    """
+    kind = tev.kind or ""
+    builder = _TIMELINE_EVENT_BUILDERS.get(kind)
+    if builder is not None:
+        inner: EventType = builder(tev)
+    else:
+        logger.warning("Unmodeled timeline event kind: %s", kind)
+        inner = UnknownEvent(typename=kind, raw={})
+
+    return RoomEvent(
+        actor_id=tev.actor_id or "",
+        event=inner,
+        id=tev.id or "",
+        created_at=format_cursor(tev.created_at),
+        actor=_user_from_proto(actor) if actor is not None else None,
+    )
+
+
+_TIMELINE_EVENT_BUILDERS: dict[str, Any] = {
+    "message_posted": lambda tev: _message_posted_from_proto(tev, tev.message),
+    "room_created": lambda tev: RoomCreatedEvent(room_id=tev.room_id),
+    "room_updated": lambda tev: RoomUpdatedEvent(room_id=tev.room_id),
+    "room_deleted": lambda tev: RoomDeletedEvent(room_id=tev.room_id),
+    "room_archived": lambda tev: RoomArchivedEvent(room_id=tev.room_id),
+    "room_unarchived": lambda tev: RoomUnarchivedEvent(room_id=tev.room_id),
+    "user_joined_room": lambda tev: UserJoinedRoomEvent(room_id=tev.room_id),
+    "user_left_room": lambda tev: UserLeftRoomEvent(room_id=tev.room_id),
+}

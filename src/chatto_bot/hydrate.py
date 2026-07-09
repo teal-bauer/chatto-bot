@@ -21,9 +21,8 @@ from typing import TYPE_CHECKING
 from .types import event_name
 
 if TYPE_CHECKING:
-    from ._pb.chatto.api.v1.message_types_pb import Message
-    from ._pb.chatto.api.v1.users_pb import User
-    from ._pb.chatto.realtime.v1.realtime_pb import RealtimeEventEnvelope
+    from chattolib._pb.chatto.realtime.v1.realtime_pb2 import RealtimeEventEnvelope
+    from chattolib.types import Message, User
     from .client import Client
     from .usercache import UserCache
 
@@ -66,9 +65,8 @@ class Hydrator:
         dropped rather than handed to handlers with a missing message.
         """
         name = event_name(envelope)
-        oneof = envelope.event
-        payload = oneof.value if oneof is not None else None
-        field_name = oneof.field if oneof is not None else None
+        field_name = envelope.WhichOneof("event")
+        payload = getattr(envelope, field_name) if field_name else None
 
         message: Message | None = None
         if field_name in _MESSAGE_FETCH_FIELDS and payload is not None:

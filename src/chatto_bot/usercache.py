@@ -12,18 +12,18 @@ import asyncio
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from ._pb.chatto.api.v1.users_pb import User
+    from chattolib.types import User
     from .client import Client
 
 
 def _unwrap_user(obj: Any) -> User:
-    """Pull the ``User`` proto out of whatever ``batch_get_users`` returns.
+    """Pull the ``User`` dataclass out of whatever ``batch_get_users`` returns.
 
     The interface contract types ``Client.batch_get_users`` as returning
-    ``list[User]``, but member-directory-backed implementations return
-    ``list[DirectoryMember]`` (``DirectoryMember.user`` plus roles/created_at).
-    Accept either shape so this cache doesn't care which one the client
-    settles on.
+    ``list[User]``, but chattolib's member-directory-backed implementation
+    returns ``list[DirectoryMember]`` (``DirectoryMember.user`` plus
+    roles/created_at). Accept either shape so this cache doesn't care which
+    one the client settles on.
     """
     user = getattr(obj, "user", None)
     return user if user is not None else obj

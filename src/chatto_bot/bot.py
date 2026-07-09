@@ -13,7 +13,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Awaitable, Callable, TYPE_CHECKING
 
-from ._pb.chatto.api.v1.rooms_pb import RoomKind
+from chattolib.types import RoomKind
 from .client import Client, Unauthenticated
 from .cog import Cog
 from .command import Command, CommandError
@@ -33,13 +33,14 @@ from .types import (
     format_cursor,
     normalize_presence_status,
     parse_envelope,
+    room_event_from_timeline,
     warn_if_retired_event_name,
 )
 
 if TYPE_CHECKING:
-    from ._pb.chatto.api.v1.room_directory_pb import RoomWithViewerState
-    from ._pb.chatto.api.v1.room_timeline_pb import RoomTimelineEvent, RoomTimelineIncludes
-    from ._pb.chatto.realtime.v1.realtime_pb import RealtimeEventEnvelope
+    from chattolib._pb.chatto.realtime.v1.realtime_pb2 import RealtimeEventEnvelope
+    from chattolib.types import RoomWithViewerState, TimelineEvent
+    from chattolib.types import User as ChattolibUser
 
 logger = logging.getLogger(__name__)
 
@@ -460,7 +461,8 @@ class Bot:
         except Exception:
             logger.debug("Could not resolve room kind for %s", room_id, exc_info=True)
             return
-        self._room_kinds[room_id] = room.kind == RoomKind.DM
+        if room is not None:
+            self._room_kinds[room_id] = room.kind == RoomKind.DM
 
     def _refresh_room_kinds(self, rooms: list[RoomWithViewerState]) -> None:
         for rws in rooms:
@@ -618,7 +620,7 @@ class Bot:
         )
         cursor_ts = self._cursor.get(_GLOBAL_CURSOR_KEY, "")
 
-        pending: list[tuple[str, RoomTimelineEvent, RoomTimelineIncludes | None]] = []
+        pending: list[tuple[str, TimelineEvent, dict[str, ChattolibUser]]] = []
         for rws in rooms:
             room = rws.room
             if room is None or not room.id:
@@ -637,9 +639,9 @@ class Bot:
         pending.sort(key=lambda item: item[0])  # oldest-first, across all rooms
 
         replayed = 0
-        for _, tev, includes in pending:
+        for _, tev, users_by_id in pending:
             try:
-                if await self._dispatch_timeline_event(tev, includes):
+                if await self._dispatch_timeline_event(tev, users_by_id):
                     replayed += 1
             except Exception:
                 logger.exception("Catch-up: failed to dispatch event %s", tev.id)
@@ -650,15 +652,15 @@ class Bot:
 
     async def _collect_missed_room_events(
         self, room_id: str, cursor_ts: str, hard_cutoff: str
-    ) -> list[tuple[str, RoomTimelineEvent, RoomTimelineIncludes | None]]:
+    ) -> list[tuple[str, TimelineEvent, dict[str, ChattolibUser]]]:
         """Page one room's timeline backwards via the opaque ``before``
         cursor, collecting events newer than ``cursor_ts`` and no older than
         ``hard_cutoff``. Doesn't dispatch anything -- returns
-        ``(created_at, event, includes)`` tuples so ``_catch_up`` can merge
-        and sort them against every other room's missed events before
+        ``(created_at, event, users_by_id)`` tuples so ``_catch_up`` can
+        merge and sort them against every other room's missed events before
         dispatching once, chronologically.
         """
-        collected: list[tuple[str, RoomTimelineEvent, RoomTimelineIncludes | None]] = []
+        collected: list[tuple[str, TimelineEvent, dict[str, ChattolibUser]]] = []
         before: str | None = None
 
         for _ in range(_CATCH_UP_MAX_PAGES):
@@ -689,7 +691,7 @@ class Bot:
                 if (cursor_ts and ts <= cursor_ts) or (ts and ts < hard_cutoff):
                     stop = True
                     break
-                collected.append((ts, tev, page.includes))
+                collected.append((ts, tev, page.users_by_id))
 
             if stop or not page.has_older:
                 return collected
@@ -701,33 +703,25 @@ class Bot:
         return collected
 
     async def _dispatch_timeline_event(
-        self, tev: RoomTimelineEvent, includes: RoomTimelineIncludes | None
+        self, tev: TimelineEvent, users_by_id: dict[str, ChattolibUser]
     ) -> bool:
-        """Adapt one ``RoomTimelineEvent`` (from GetRoomEvents) into a
-        RoomEvent and dispatch it.
+        """Adapt one ``TimelineEvent`` (from GetRoomEvents) into a RoomEvent
+        and dispatch it.
 
         Unlike realtime hydration, the message body is already inline
         (``message_posted`` carries the full ``Message``), so no extra fetch
-        is needed; the actor is resolved from the page's ``includes`` map
+        is needed; the actor is resolved from the page's ``users_by_id`` map
         when present, falling back to UserCache otherwise. Returns whatever
         ``Bot._dispatch`` returns -- whether the event actually reached
         handlers, as opposed to being cursor-deduped or filtered out.
         """
-        oneof = tev.event
-        if oneof is None:
-            return False
-        field = oneof.field
-
-        message = oneof.value.message if field == "message_posted" else None
-
         actor = None
         if tev.actor_id:
-            if includes is not None:
-                actor = includes.users.get(tev.actor_id)
-            if actor is None and self._will_dispatch(field):
+            actor = users_by_id.get(tev.actor_id)
+            if actor is None and self._will_dispatch(tev.kind):
                 actor = await self.users.get(tev.actor_id)
 
-        room_event = parse_envelope(tev, message=message, actor=actor)
+        room_event = room_event_from_timeline(tev, actor=actor)
         return await self._dispatch(room_event)
 
     # --- Auth / lifecycle ---
