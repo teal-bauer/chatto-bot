@@ -49,8 +49,10 @@ _GLOBAL_CURSOR_KEY = "_global"
 
 # Presence is transient server-side (no "stay ONLINE until told otherwise"),
 # so it needs periodic refreshing or the bot drifts to OFFLINE while still
-# very much running.
-_PRESENCE_INTERVAL_SECONDS = 240
+# very much running. The server expires a presence entry 60s after the last
+# refresh, so this interval MUST stay comfortably under that TTL; 30s matches
+# the server's own recommended client refresh cadence.
+_PRESENCE_INTERVAL_SECONDS = 30
 
 # Reconnect catch-up: page size and a hard cap on how many pages we'll walk
 # backwards per room, so a room with a huge backlog can't make catch-up run
