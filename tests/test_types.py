@@ -8,6 +8,13 @@ import pytest
 from protobuf import Oneof
 from protobuf.wkt import Timestamp
 
+from chatto_bot._pb.chatto.api.v1.link_previews_pb import (
+    LinkPreview as ProtoLinkPreview,
+    SocialPostAuthor as ProtoSocialPostAuthor,
+    SocialPostExternalLink as ProtoSocialPostExternalLink,
+    SocialPostImage as ProtoSocialPostImage,
+    SocialPostPreview as ProtoSocialPostPreview,
+)
 from chatto_bot._pb.chatto.api.v1.message_types_pb import Message
 from chatto_bot._pb.chatto.api.v1.users_pb import User as ProtoUser
 from chatto_bot._pb.chatto.realtime.v1 import realtime_pb as rt
@@ -20,6 +27,7 @@ from chatto_bot.types import (
     RETIRED_EVENT_NAMES,
     RoomArchivedEvent,
     RoomEvent,
+    SocialPostPreview,
     UnknownEvent,
     VideoProcessingCompletedEvent,
     event_name,
@@ -242,3 +250,250 @@ class TestRetiredEventNames:
         # Should be a no-op (log a warning) for both retired and live names.
         warn_if_retired_event_name("user_created")
         warn_if_retired_event_name("message_posted")
+
+
+def _posted_with_message(message: Message) -> RoomEvent:
+    env = _envelope(
+        "message_posted", rt.RealtimeMessagePostedEvent(room_id="R-signal", message_event_id="E1")
+    )
+    return parse_envelope(env, message=message)
+
+
+class TestLinkPreviewSocialPost:
+    def test_absent_social_post_stays_none(self):
+        message = Message(
+            id="E1", room_id="R1", link_preview=ProtoLinkPreview(url="https://example.com")
+        )
+        room_event = _posted_with_message(message)
+        assert room_event.event.link_preview.url == "https://example.com"
+        assert room_event.event.link_preview.social_post is None
+
+    def test_no_link_preview_stays_none(self):
+        message = Message(id="E1", room_id="R1")
+        room_event = _posted_with_message(message)
+        assert room_event.event.link_preview is None
+
+    def test_minimal_empty_social_post(self):
+        message = Message(
+            id="E1",
+            room_id="R1",
+            link_preview=ProtoLinkPreview(
+                url="https://example.com",
+                social_post=ProtoSocialPostPreview(provider="bluesky"),
+            ),
+        )
+        room_event = _posted_with_message(message)
+        social = room_event.event.link_preview.social_post
+        assert isinstance(social, SocialPostPreview)
+        assert social.provider == "bluesky"
+        assert social.text == ""
+        assert social.url == ""
+        assert social.author is None
+        assert social.images == []
+        assert social.external_link is None
+        assert social.content_warning is None
+        assert social.published_at is None
+        assert social.quoted_post is None
+
+    def test_full_social_post(self):
+        published = Timestamp.from_datetime(
+            datetime.datetime(2026, 2, 3, 4, 5, 6, tzinfo=datetime.timezone.utc)
+        )
+        message = Message(
+            id="E1",
+            room_id="R1",
+            link_preview=ProtoLinkPreview(
+                url="https://example.com/post",
+                social_post=ProtoSocialPostPreview(
+                    provider="bluesky",
+                    author=ProtoSocialPostAuthor(
+                        display_name="Alice",
+                        handle="alice.bsky.social",
+                        avatar_url="https://cdn.example.com/a.png",
+                        avatar_asset_id="asset-1",
+                    ),
+                    text="hello world",
+                    published_at=published,
+                    images=[
+                        ProtoSocialPostImage(
+                            url="https://cdn.example.com/i1.png",
+                            asset_id="img-1",
+                            alt="a cat",
+                            width=100,
+                            height=200,
+                        ),
+                    ],
+                    external_link=ProtoSocialPostExternalLink(
+                        url="https://linked.example.com",
+                        title="Linked title",
+                        description="Linked description",
+                        image_url="https://cdn.example.com/card.png",
+                        image_asset_id="card-1",
+                    ),
+                    content_warning="spoilers",
+                    url="https://provider.example.com/post/1",
+                ),
+            ),
+        )
+        room_event = _posted_with_message(message)
+        social = room_event.event.link_preview.social_post
+
+        assert social.provider == "bluesky"
+        assert social.text == "hello world"
+        assert social.url == "https://provider.example.com/post/1"
+        assert social.content_warning == "spoilers"
+        assert social.published_at == format_cursor(published)
+
+        assert social.author.display_name == "Alice"
+        assert social.author.handle == "alice.bsky.social"
+        assert social.author.avatar_url == "https://cdn.example.com/a.png"
+        assert social.author.avatar_asset_id == "asset-1"
+
+        assert len(social.images) == 1
+        assert social.images[0].url == "https://cdn.example.com/i1.png"
+        assert social.images[0].asset_id == "img-1"
+        assert social.images[0].alt == "a cat"
+        assert social.images[0].width == 100
+        assert social.images[0].height == 200
+
+        assert social.external_link.url == "https://linked.example.com"
+        assert social.external_link.title == "Linked title"
+        assert social.external_link.description == "Linked description"
+        assert social.external_link.image_url == "https://cdn.example.com/card.png"
+        assert social.external_link.image_asset_id == "card-1"
+
+        assert social.quoted_post is None
+
+    def test_content_warning_absent(self):
+        message = Message(
+            id="E1",
+            room_id="R1",
+            link_preview=ProtoLinkPreview(
+                url="https://example.com",
+                social_post=ProtoSocialPostPreview(provider="bluesky", text="no warning here"),
+            ),
+        )
+        room_event = _posted_with_message(message)
+        assert room_event.event.link_preview.social_post.content_warning is None
+
+    def test_image_without_alt_and_dimensions(self):
+        message = Message(
+            id="E1",
+            room_id="R1",
+            link_preview=ProtoLinkPreview(
+                url="https://example.com",
+                social_post=ProtoSocialPostPreview(
+                    provider="bluesky",
+                    images=[ProtoSocialPostImage(url="https://cdn.example.com/i.png", asset_id="img-1")],
+                ),
+            ),
+        )
+        room_event = _posted_with_message(message)
+        image = room_event.event.link_preview.social_post.images[0]
+        assert image.alt is None
+        assert image.width is None
+        assert image.height is None
+
+    def test_explicitly_empty_optionals_are_distinct_from_absent(self):
+        # An author who wrote empty alt text, and a zero-size image, are not
+        # the same as a server that sent no alt text or dimensions at all.
+        message = Message(
+            id="E1",
+            room_id="R1",
+            link_preview=ProtoLinkPreview(
+                url="https://example.com",
+                social_post=ProtoSocialPostPreview(
+                    provider="bluesky",
+                    content_warning="",
+                    images=[
+                        ProtoSocialPostImage(
+                            url="https://cdn.example.com/i.png",
+                            asset_id="img-1",
+                            alt="",
+                            width=0,
+                            height=0,
+                        )
+                    ],
+                ),
+            ),
+        )
+        social = _posted_with_message(message).event.link_preview.social_post
+        assert social.content_warning == ""
+        image = social.images[0]
+        assert image.alt == ""
+        assert image.width == 0
+        assert image.height == 0
+
+    def test_quoted_post_one_level(self):
+        message = Message(
+            id="E1",
+            room_id="R1",
+            link_preview=ProtoLinkPreview(
+                url="https://example.com",
+                social_post=ProtoSocialPostPreview(
+                    provider="bluesky",
+                    text="quoting",
+                    quoted_post=ProtoSocialPostPreview(
+                        provider="bluesky",
+                        text="the original",
+                        url="https://provider.example.com/post/original",
+                    ),
+                ),
+            ),
+        )
+        room_event = _posted_with_message(message)
+        social = room_event.event.link_preview.social_post
+
+        assert social.text == "quoting"
+        assert social.quoted_post is not None
+        assert isinstance(social.quoted_post, SocialPostPreview)
+        assert social.quoted_post.text == "the original"
+        assert social.quoted_post.url == "https://provider.example.com/post/original"
+        # The server omits quotes nested inside a quote, so the mapper never
+        # has to recurse past one level in practice.
+        assert social.quoted_post.quoted_post is None
+
+
+class TestMessageDeletedAt:
+    """Message.deleted_at (field 21) marks when content was deleted through
+    retraction or crypto-shredding. Reachable wherever hydrate.py fetches a
+    current Message: message_posted and message_edited. message_retracted's
+    signal carries no timestamp and hydrate.py never fetches a Message for
+    it, so there is nothing to surface on MessageDeletedEvent."""
+
+    def test_message_posted_surfaces_deleted_at(self):
+        deleted = Timestamp.from_datetime(
+            datetime.datetime(2026, 5, 6, 7, 8, 9, tzinfo=datetime.timezone.utc)
+        )
+        message = Message(id="E1", room_id="R1", body="hello", deleted_at=deleted)
+        room_event = _posted_with_message(message)
+        assert room_event.event.deleted_at == format_cursor(deleted)
+
+    def test_message_posted_deleted_at_absent(self):
+        message = Message(id="E1", room_id="R1", body="hello")
+        room_event = _posted_with_message(message)
+        assert room_event.event.deleted_at is None
+
+    def test_message_edited_surfaces_deleted_at(self):
+        deleted = Timestamp.from_datetime(
+            datetime.datetime(2026, 5, 6, 7, 8, 9, tzinfo=datetime.timezone.utc)
+        )
+        env = _envelope(
+            "message_edited", rt.RealtimeMessageEditedEvent(room_id="R1", message_event_id="E9")
+        )
+        message = Message(id="E9", room_id="R1", deleted_at=deleted)
+
+        room_event = parse_envelope(env, message=message)
+
+        assert isinstance(room_event.event, MessageUpdatedEvent)
+        assert room_event.event.deleted_at == format_cursor(deleted)
+
+    def test_message_edited_deleted_at_absent(self):
+        env = _envelope(
+            "message_edited", rt.RealtimeMessageEditedEvent(room_id="R1", message_event_id="E9")
+        )
+        message = Message(id="E9", room_id="R1", body="still here")
+
+        room_event = parse_envelope(env, message=message)
+
+        assert room_event.event.deleted_at is None

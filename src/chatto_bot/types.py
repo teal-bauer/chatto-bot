@@ -95,6 +95,47 @@ class Reaction:
 
 
 @dataclass
+class SocialPostAuthor:
+    display_name: str = ""
+    handle: str = ""
+    avatar_url: str | None = None
+    avatar_asset_id: str | None = None
+
+
+@dataclass
+class SocialPostImage:
+    url: str = ""
+    asset_id: str = ""
+    alt: str | None = None
+    width: int | None = None
+    height: int | None = None
+
+
+@dataclass
+class SocialPostExternalLink:
+    url: str = ""
+    title: str | None = None
+    description: str | None = None
+    image_url: str | None = None
+    image_asset_id: str | None = None
+
+
+@dataclass
+class SocialPostPreview:
+    provider: str = ""
+    author: SocialPostAuthor | None = None
+    text: str = ""
+    published_at: str | None = None
+    images: list[SocialPostImage] = field(default_factory=list)
+    external_link: SocialPostExternalLink | None = None
+    content_warning: str | None = None
+    url: str = ""
+    # Server omits quotes nested inside a quote, so this is always None on a
+    # quoted_post's own quoted_post in practice.
+    quoted_post: SocialPostPreview | None = None
+
+
+@dataclass
 class LinkPreview:
     url: str = ""
     title: str | None = None
@@ -104,6 +145,7 @@ class LinkPreview:
     site_name: str | None = None
     embed_type: str | None = None
     embed_id: str | None = None
+    social_post: SocialPostPreview | None = None
 
 
 @dataclass
@@ -139,6 +181,9 @@ class MessagePostedEvent:
     echo_from_thread_root_event_id: str | None = None
     channel_echo_event_id: str | None = None
     thread: ThreadSummary | None = None
+    # Set when the message's content was already deleted (retraction or
+    # crypto-shredding) by the time it was hydrated.
+    deleted_at: str | None = None
 
 
 @dataclass
@@ -151,12 +196,14 @@ class MessageUpdatedEvent:
     ``ctx.fetch_message()`` just to read the edited text. It's still ``None``
     if hydration didn't run (e.g. direct ``parse_envelope()`` use without a
     message passed in); ``ctx.fetch_message()`` remains the way to get
-    attachments, reactions, etc.
+    attachments, reactions, etc. ``deleted_at`` is likewise only populated
+    when a hydrated message is passed in.
     """
 
     room_id: str
     message_event_id: str
     body: str | None = None
+    deleted_at: str | None = None
 
 
 @dataclass
@@ -721,6 +768,64 @@ def _reaction_from_proto(r: Any) -> Reaction:
     )
 
 
+def _opt(msg: Any, name: str) -> Any:
+    """Read a proto3 ``optional`` scalar, preserving absence.
+
+    The generated runtime reports an unset optional scalar as the zero value
+    ("" or 0), which is indistinguishable from one the server set explicitly.
+    link_previews.proto asks clients to treat absent metadata as unavailable,
+    so key off presence and map absent to None.
+    """
+    return getattr(msg, name) if msg.has_field(name) else None
+
+
+def _social_post_author_from_proto(a: Any) -> SocialPostAuthor:
+    return SocialPostAuthor(
+        display_name=a.display_name,
+        handle=a.handle,
+        avatar_url=_opt(a, "avatar_url"),
+        avatar_asset_id=_opt(a, "avatar_asset_id"),
+    )
+
+
+def _social_post_image_from_proto(img: Any) -> SocialPostImage:
+    return SocialPostImage(
+        url=img.url,
+        asset_id=img.asset_id,
+        alt=_opt(img, "alt"),
+        width=_opt(img, "width"),
+        height=_opt(img, "height"),
+    )
+
+
+def _social_post_external_link_from_proto(el: Any) -> SocialPostExternalLink:
+    return SocialPostExternalLink(
+        url=el.url,
+        title=_opt(el, "title"),
+        description=_opt(el, "description"),
+        image_url=_opt(el, "image_url"),
+        image_asset_id=_opt(el, "image_asset_id"),
+    )
+
+
+def _social_post_from_proto(sp: Any) -> SocialPostPreview:
+    return SocialPostPreview(
+        provider=sp.provider,
+        author=_social_post_author_from_proto(sp.author) if sp.author is not None else None,
+        text=sp.text,
+        published_at=format_cursor(sp.published_at) if sp.published_at else None,
+        images=[_social_post_image_from_proto(i) for i in sp.images],
+        external_link=_social_post_external_link_from_proto(sp.external_link)
+        if sp.external_link is not None
+        else None,
+        content_warning=_opt(sp, "content_warning"),
+        url=sp.url,
+        # Server-side depth limiting (see SocialPostPreview.quoted_post) means
+        # this recursion bottoms out after one level in practice.
+        quoted_post=_social_post_from_proto(sp.quoted_post) if sp.quoted_post is not None else None,
+    )
+
+
 def _link_preview_from_proto(lp: Any) -> LinkPreview:
     return LinkPreview(
         url=lp.url,
@@ -731,6 +836,7 @@ def _link_preview_from_proto(lp: Any) -> LinkPreview:
         site_name=lp.site_name,
         embed_type=lp.embed_type,
         embed_id=lp.embed_id,
+        social_post=_social_post_from_proto(lp.social_post) if lp.social_post is not None else None,
     )
 
 
@@ -773,6 +879,7 @@ def _message_posted_from_proto(signal: Any, message: _ProtoMessage | None) -> Me
         echo_from_thread_root_event_id=message.echo_from_thread_root_event_id or None,
         channel_echo_event_id=message.channel_echo_event_id or None,
         thread=_thread_summary_from_proto(message.thread) if message.thread is not None else None,
+        deleted_at=format_cursor(message.deleted_at) if message.deleted_at else None,
     )
 
 
@@ -784,6 +891,7 @@ _EVENT_BUILDERS: dict[str, Any] = {
         room_id=p.room_id,
         message_event_id=p.message_event_id,
         body=m.body if m is not None else None,
+        deleted_at=format_cursor(m.deleted_at) if m is not None and m.deleted_at else None,
     ),
     "message_retracted": lambda p, m: MessageDeletedEvent(
         room_id=p.room_id, message_event_id=p.message_event_id, reason=p.reason
