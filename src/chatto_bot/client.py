@@ -46,6 +46,7 @@ from ._pb.chatto.api.v1.room_directory_pb import (
 from ._pb.chatto.api.v1.room_timeline_pb import (
     GetRoomEventsAroundRequest,
     GetRoomEventsRequest,
+    GetThreadEventsRequest,
     RoomTimelinePage,
 )
 from ._pb.chatto.api.v1.rooms_connect import RoomServiceClient
@@ -56,6 +57,7 @@ from ._pb.chatto.api.v1.rooms_pb import (
     StartDMRequest,
     UpdateTypingIndicatorRequest,
 )
+from ._pb.chatto.api.v1.threads_connect import ThreadServiceClient
 from ._pb.chatto.api.v1.account_connect import MyAccountServiceClient
 from ._pb.chatto.api.v1.viewer_connect import ViewerServiceClient
 from ._pb.chatto.api.v1.viewer_pb import GetViewerRequest, ViewerUser
@@ -293,6 +295,37 @@ class Client:
         resp = await self._call_or_raise(
             client.get_room_events(
                 GetRoomEventsRequest(room_id=room_id, limit=limit, cursor=cursor),
+                headers=self._headers(),
+            )
+        )
+        return resp.page
+
+    async def get_thread_events(
+        self,
+        room_id: str,
+        thread_root_event_id: str,
+        *,
+        limit: int = 50,
+        before: str | None = None,
+        after: str | None = None,
+    ) -> RoomTimelinePage:
+        """Fetch a page of one thread's timeline events. ``before``/``after`` are
+        opaque server-issued cursors (``RoomTimelinePage.start_cursor``/``end_cursor``),
+        not event IDs -- do not construct or parse them."""
+        cursor = None
+        if before is not None:
+            cursor = Oneof("before", before)
+        elif after is not None:
+            cursor = Oneof("after", after)
+        client = self._transport.client(ThreadServiceClient)
+        resp = await self._call_or_raise(
+            client.get_thread_events(
+                GetThreadEventsRequest(
+                    room_id=room_id,
+                    thread_root_event_id=thread_root_event_id,
+                    limit=limit,
+                    cursor=cursor,
+                ),
                 headers=self._headers(),
             )
         )

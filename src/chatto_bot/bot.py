@@ -61,6 +61,15 @@ _CATCH_UP_PAGE_LIMIT = 50
 _CATCH_UP_MAX_PAGES = 20
 _CATCH_UP_HOURS = 1
 
+# Thread-reply discovery walks the room timeline for roots whose thread saw a
+# reply after the cursor (see `_collect_missed_room_events`). That walk is
+# bounded to this window rather than the full `_CATCH_UP_HOURS` dispatch
+# cutoff: a routine reconnect would otherwise re-scan a whole hour of every
+# room just to look for thread activity, even when almost nothing was missed.
+# The tradeoff: a reply to a thread whose root is older than this window isn't
+# backfilled. Kept well under the dispatch cutoff so short reconnects stay cheap.
+_THREAD_DISCOVERY_MINUTES = 15
+
 # Reverse of types.EVENT_NAME_TO_TYPE: dataclass type -> public event name.
 # Used to recover the dispatch name from an already-parsed RoomEvent without
 # re-deriving it from the realtime envelope (which isn't always available --
@@ -601,11 +610,20 @@ class Bot:
         first keeps the cursor advancing monotonically across the whole
         catch-up, regardless of how many rooms are involved.
 
-        Known blind spot: thread replies (only visible via GetThreadEvents,
-        not the room timeline) and reactions aren't part of
-        GetRoomEvents' payload, so if either happens during a reconnect gap,
-        this catch-up won't replay it -- only a live realtime event would
-        have caught it.
+        Thread replies never appear in a room timeline (only GetThreadEvents
+        carries them), so for every message whose thread saw a reply after
+        the cursor, that thread's missed replies are backfilled separately
+        (see ``_collect_missed_thread_events``) and merged into the same
+        pending stream.
+
+        Remaining blind spots: (a) replies to a thread whose root is older
+        than the thread-discovery window (``_THREAD_DISCOVERY_MINUTES``, a
+        deliberately tighter bound than the dispatch cutoff) aren't
+        backfilled -- the root falls outside the discovery scan, so the
+        thread is never found as a candidate; and (b) reactions aren't part
+        of any history payload (no reaction-history API exists), so a reaction
+        landing during a reconnect gap is lost -- only a live realtime event
+        would have caught it.
         """
         try:
             rooms = await self.client.list_rooms()
@@ -615,12 +633,15 @@ class Bot:
 
         self._refresh_room_kinds(rooms)
 
-        hard_cutoff = _format_cutoff(
-            datetime.now(timezone.utc) - timedelta(hours=_CATCH_UP_HOURS)
+        now = datetime.now(timezone.utc)
+        hard_cutoff = _format_cutoff(now - timedelta(hours=_CATCH_UP_HOURS))
+        discovery_cutoff = _format_cutoff(
+            now - timedelta(minutes=_THREAD_DISCOVERY_MINUTES)
         )
         cursor_ts = self._cursor.get(_GLOBAL_CURSOR_KEY, "")
 
         pending: list[tuple[str, RoomTimelineEvent, RoomTimelineIncludes | None]] = []
+        candidates: set[tuple[str, str]] = set()
         for rws in rooms:
             room = rws.room
             if room is None or not room.id:
@@ -632,8 +653,23 @@ class Bot:
             if not self.config.dms and room.kind == RoomKind.DM:
                 continue
 
+            collected, room_candidates = await self._collect_missed_room_events(
+                room.id, cursor_ts, hard_cutoff, discovery_cutoff
+            )
+            pending.extend(collected)
+            candidates |= room_candidates
+
+        # Backfill missed thread replies. Each candidate is a thread whose
+        # root is in the walked window and which saw a reply after the
+        # cursor; its replies live only in GetThreadEvents. They merge into
+        # the same pending stream and sort/dedup against room events
+        # uniformly below -- a backfilled reply is just a message_posted with
+        # thread_root_event_id set.
+        for room_id, root_id in candidates:
             pending.extend(
-                await self._collect_missed_room_events(room.id, cursor_ts, hard_cutoff)
+                await self._collect_missed_thread_events(
+                    room_id, root_id, cursor_ts, hard_cutoff
+                )
             )
 
         pending.sort(key=lambda item: item[0])  # oldest-first, across all rooms
@@ -651,16 +687,47 @@ class Bot:
         self._save_state()
 
     async def _collect_missed_room_events(
-        self, room_id: str, cursor_ts: str, hard_cutoff: str
-    ) -> list[tuple[str, RoomTimelineEvent, RoomTimelineIncludes | None]]:
+        self, room_id: str, cursor_ts: str, hard_cutoff: str, discovery_cutoff: str
+    ) -> tuple[
+        list[tuple[str, RoomTimelineEvent, RoomTimelineIncludes | None]],
+        set[tuple[str, str]],
+    ]:
         """Page one room's timeline backwards via the opaque ``before``
-        cursor, collecting events newer than ``cursor_ts`` and no older than
-        ``hard_cutoff``. Doesn't dispatch anything -- returns
-        ``(created_at, event, includes)`` tuples so ``_catch_up`` can merge
-        and sort them against every other room's missed events before
-        dispatching once, chronologically.
+        cursor. Two things happen per page, each with its own lower bound:
+
+        - **Dispatch-collection**: events newer than ``cursor_ts`` (and no
+          older than ``hard_cutoff``) are returned as
+          ``(created_at, event, includes)`` tuples so ``_catch_up`` can merge
+          and sort them against every other room's missed events before
+          dispatching once, chronologically. Nothing is dispatched here.
+        - **Thread-candidate discovery**: every ``message_posted`` event no
+          older than ``discovery_cutoff`` -- whether newer OR older than the
+          cursor -- is inspected for a thread summary whose most recent reply
+          landed after the cursor. Such a root's replies may have been missed
+          during the gap, and the room timeline never carries thread replies
+          (only GetThreadEvents does), so its ``(room_id,
+          thread_root_event_id)`` is returned for ``_catch_up`` to backfill
+          separately.
+
+        Returned as ``(collected, candidates)``.
+
+        The walk stops at whichever bound is *older*: dispatch needs
+        everything down to the cursor (but never past ``hard_cutoff``), and
+        discovery needs everything down to ``discovery_cutoff``. A still-active
+        thread's root can be older than the cursor (posted before the gap,
+        replied to during it), so the walk has to pass the cursor to see it --
+        but only as far back as the (tighter) discovery cutoff, not the whole
+        dispatch hour, so a routine reconnect stays cheap.
         """
+        # Older of the two lower bounds. Dispatch never goes past the hard
+        # cutoff, so its floor is `max(cursor, hard_cutoff)`; discovery's floor
+        # is `discovery_cutoff`. Both are >= `hard_cutoff`, so the walk never
+        # yields anything the dispatch gate would have to re-exclude. Lexical
+        # comparison of these ISO-8601 UTC strings is chronological.
+        walk_floor = min(max(cursor_ts, hard_cutoff), discovery_cutoff)
+
         collected: list[tuple[str, RoomTimelineEvent, RoomTimelineIncludes | None]] = []
+        candidates: set[tuple[str, str]] = set()
         before: str | None = None
 
         for _ in range(_CATCH_UP_MAX_PAGES):
@@ -672,25 +739,114 @@ class Bot:
                 logger.debug(
                     "Catch-up: skipping room %s (no access)", room_id, exc_info=True
                 )
+                return collected, candidates
+
+            events = list(page.events)
+            if not events:
+                return collected, candidates
+
+            # Events come oldest-first *within* a page (see GetRoomEvents in
+            # cli/internal/core/room_events.go). Scan newest-to-oldest --
+            # i.e. in reverse -- to find the stop point: the first event
+            # older than the walk floor. Collecting while walking in reverse
+            # also means each page's slice of `collected` comes out
+            # newest-first, but that's fine since the caller sorts everything
+            # by timestamp before dispatching.
+            stop = False
+            for tev in reversed(events):
+                ts = format_cursor(tev.created_at)
+                if ts and ts < walk_floor:
+                    stop = True
+                    break
+
+                # Thread-candidate discovery runs for every message inside the
+                # discovery window, even one at/older than the cursor: the root
+                # predates the gap but its replies may not. Roots older than
+                # the window (but still walked for dispatch) are skipped.
+                oneof = tev.event
+                if (
+                    ts >= discovery_cutoff
+                    and oneof is not None
+                    and oneof.field == "message_posted"
+                ):
+                    message = oneof.value.message
+                    summary = message.thread if message is not None else None
+                    if (
+                        summary is not None
+                        and summary.last_reply_at
+                        and format_cursor(summary.last_reply_at) > cursor_ts
+                    ):
+                        # The root's own thread_root_event_id may be blank --
+                        # the root event id IS the thread root -- so fall
+                        # back to it.
+                        root_id = summary.thread_root_event_id or tev.id
+                        candidates.add((room_id, root_id))
+
+                # Dispatch-collection stays cursor-gated: only events newer
+                # than the stored cursor are replayed.
+                if not (cursor_ts and ts <= cursor_ts):
+                    collected.append((ts, tev, page.includes))
+
+            if stop or not page.has_older:
+                return collected, candidates
+
+            before = page.start_cursor
+            if not before:
+                return collected, candidates
+
+        return collected, candidates
+
+    async def _collect_missed_thread_events(
+        self, room_id: str, thread_root_event_id: str, cursor_ts: str, hard_cutoff: str
+    ) -> list[tuple[str, RoomTimelineEvent, RoomTimelineIncludes | None]]:
+        """Page one thread's timeline backwards via the opaque ``before``
+        cursor, collecting replies newer than ``cursor_ts`` and no older than
+        ``hard_cutoff``. Mirrors ``_collect_missed_room_events``'s walk but
+        against GetThreadEvents, the only surface that carries thread replies
+        at all.
+
+        The thread root itself comes back in this timeline too, but it
+        already flows through the room path (as a plain ``message_posted``),
+        so the event whose ``id == thread_root_event_id`` is excluded here --
+        emitting it again would double-dispatch the root.
+        """
+        collected: list[tuple[str, RoomTimelineEvent, RoomTimelineIncludes | None]] = []
+        before: str | None = None
+
+        for _ in range(_CATCH_UP_MAX_PAGES):
+            try:
+                page = await self.client.get_thread_events(
+                    room_id,
+                    thread_root_event_id,
+                    limit=_CATCH_UP_PAGE_LIMIT,
+                    before=before,
+                )
+            except Exception:
+                logger.debug(
+                    "Catch-up: skipping thread %s in room %s (no access)",
+                    thread_root_event_id,
+                    room_id,
+                    exc_info=True,
+                )
                 return collected
 
             events = list(page.events)
             if not events:
                 return collected
 
-            # Events come oldest-first *within* a page (see GetRoomEvents in
-            # cli/internal/core/room_events.go). Scan newest-to-oldest --
-            # i.e. in reverse -- to find the stop point: the first event
-            # at/older than the stored cursor or the hard cutoff. Collecting
-            # while walking in reverse also means each page's slice of
-            # `collected` comes out newest-first, but that's fine since the
-            # caller sorts everything by timestamp before dispatching.
+            # Same oldest-first-within-a-page order and reverse scan as the
+            # room method: stop at the first event at/older than the stored
+            # cursor or the hard cutoff.
             stop = False
             for tev in reversed(events):
                 ts = format_cursor(tev.created_at)
                 if (cursor_ts and ts <= cursor_ts) or (ts and ts < hard_cutoff):
                     stop = True
                     break
+                # Never emit the root as a reply -- it already flows through
+                # the room timeline path.
+                if tev.id == thread_root_event_id:
+                    continue
                 collected.append((ts, tev, page.includes))
 
             if stop or not page.has_older:

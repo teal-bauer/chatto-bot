@@ -14,7 +14,7 @@ import pytest
 from protobuf import Oneof
 from protobuf.wkt import Timestamp
 
-from chatto_bot._pb.chatto.api.v1.message_types_pb import Message
+from chatto_bot._pb.chatto.api.v1.message_types_pb import Message, ThreadSummary
 from chatto_bot._pb.chatto.api.v1.room_directory_pb import RoomViewerState, RoomWithViewerState
 from chatto_bot._pb.chatto.api.v1.room_timeline_pb import (
     RoomMessagePosted,
@@ -281,6 +281,69 @@ def _room_with_viewer_state(room_id: str, *, is_member: bool = True, kind=RoomKi
     )
 
 
+def _threaded_root_tev(
+    event_id: str,
+    created_at: Timestamp,
+    last_reply_at: Timestamp | None,
+    *,
+    room_id: str = "R1",
+    thread_root_event_id: str | None = None,
+) -> RoomTimelineEvent:
+    """A ``message_posted`` tev whose ``Message`` carries a ``ThreadSummary``.
+    ``thread_root_event_id=None`` leaves the summary's field blank, exercising
+    the fallback to the event's own id."""
+    thread = ThreadSummary(
+        thread_root_event_id="" if thread_root_event_id is None else thread_root_event_id,
+        reply_count=1,
+        last_reply_at=last_reply_at,
+    )
+    message = Message(id=event_id, room_id=room_id, body="root", thread=thread)
+    return RoomTimelineEvent(
+        id=event_id,
+        actor_id="U1",
+        created_at=created_at,
+        event=Oneof("message_posted", RoomMessagePosted(message=message)),
+    )
+
+
+def _recent_threaded_root_tev(
+    event_id: str, minutes_ago: float, last_reply_minutes_ago: float, *, room_id: str = "R1"
+) -> RoomTimelineEvent:
+    """Thread root with recent (wall-clock-relative) timestamps, so it survives
+    ``_catch_up``'s live 1-hour hard cutoff."""
+    thread = ThreadSummary(
+        thread_root_event_id=event_id,
+        reply_count=1,
+        last_reply_at=Timestamp.from_datetime(_recent_dt(last_reply_minutes_ago)),
+    )
+    message = Message(id=event_id, room_id=room_id, body="!root", thread=thread)
+    return RoomTimelineEvent(
+        id=event_id,
+        actor_id="U1",
+        created_at=Timestamp.from_datetime(_recent_dt(minutes_ago)),
+        event=Oneof("message_posted", RoomMessagePosted(message=message)),
+    )
+
+
+def _recent_reply_tev(
+    event_id: str, minutes_ago: float, thread_root_event_id: str, *, room_id: str = "R1"
+) -> RoomTimelineEvent:
+    """A thread reply (``message_posted`` with ``thread_root_event_id`` set),
+    as GetThreadEvents would return it."""
+    message = Message(
+        id=event_id,
+        room_id=room_id,
+        body="!reply",
+        thread_root_event_id=thread_root_event_id,
+    )
+    return RoomTimelineEvent(
+        id=event_id,
+        actor_id="U1",
+        created_at=Timestamp.from_datetime(_recent_dt(minutes_ago)),
+        event=Oneof("message_posted", RoomMessagePosted(message=message)),
+    )
+
+
 class TestCollectMissedRoomEvents:
     """Tests for ``Bot._collect_missed_room_events`` -- gathers a room's missed
     timeline events (per the reconnect catch-up's ``before``-cursor paging)
@@ -301,16 +364,19 @@ class TestCollectMissedRoomEvents:
 
         cursor_ts = "2026-01-01T00:00:00.000000Z"
         hard_cutoff = "2025-01-01T00:00:00.000000Z"
-        collected = await bot._collect_missed_room_events("R1", cursor_ts, hard_cutoff)
+        collected, _ = await bot._collect_missed_room_events(
+            "R1", cursor_ts, hard_cutoff, hard_cutoff
+        )
 
         assert len(collected) == 1
         _, got_tev, _ = collected[0]
         assert got_tev.id == "E2"
 
     @pytest.mark.asyncio
-    async def test_stops_at_stored_cursor(self, bot):
-        """An event at/older than the stored cursor stops paging and isn't
-        collected."""
+    async def test_stops_at_hard_cutoff(self, bot):
+        """The walk stops at the hard cutoff, not the stored cursor: an event
+        older than the hard cutoff ends paging after a single page, and no
+        event at/older than the stored cursor is collected for dispatch."""
         old_tev = RoomTimelineEvent(
             id="E-old",
             actor_id="U1",
@@ -325,11 +391,14 @@ class TestCollectMissedRoomEvents:
         bot.client.get_room_events = AsyncMock(return_value=page)
 
         cursor_ts = "2025-12-01T00:00:00.000000Z"
-        hard_cutoff = "2020-01-01T00:00:00.000000Z"
-        collected = await bot._collect_missed_room_events("R1", cursor_ts, hard_cutoff)
+        hard_cutoff = "2025-07-01T00:00:00.000000Z"  # newer than old_tev
+        collected, candidates = await bot._collect_missed_room_events(
+            "R1", cursor_ts, hard_cutoff, hard_cutoff
+        )
 
-        assert collected == []
-        bot.client.get_room_events.assert_awaited_once()  # didn't page further back
+        assert collected == []  # older than the cursor -- not dispatch-collected
+        assert candidates == set()
+        bot.client.get_room_events.assert_awaited_once()  # walk stopped at the hard cutoff
 
     @pytest.mark.asyncio
     async def test_partial_page_replay_when_oldest_event_is_stale(self, bot):
@@ -355,7 +424,9 @@ class TestCollectMissedRoomEvents:
 
         cursor_ts = "2026-01-01T08:30:00.000000Z"  # between stale and newer1
         hard_cutoff = "2020-01-01T00:00:00.000000Z"
-        collected = await bot._collect_missed_room_events("R1", cursor_ts, hard_cutoff)
+        collected, _ = await bot._collect_missed_room_events(
+            "R1", cursor_ts, hard_cutoff, hard_cutoff
+        )
 
         ids = {tev.id for _, tev, _ in collected}
         assert ids == {"E-newer1", "E-newer2"}
@@ -476,6 +547,278 @@ class TestCatchUpDispatchOrder:
         from chatto_bot.types import format_cursor
 
         assert bot._cursor["_global"] == format_cursor(room_a_event.created_at)
+
+
+class TestThreadCatchup:
+    """Thread replies never appear in a room timeline, so catch-up discovers
+    candidate threads while walking the room backwards and backfills their
+    missed replies via GetThreadEvents."""
+
+    @pytest.mark.asyncio
+    async def test_records_candidate_for_preexisting_root_with_recent_reply(self, bot):
+        """A root posted *before* the cursor is still a candidate when its
+        thread saw a reply after the cursor -- the walk reaches it (it's
+        within the hard cutoff) even though dispatch-collection skips it."""
+        root = _threaded_root_tev("root1", _ts(8, 0), _ts(12, 0))
+        page = RoomTimelinePage(
+            events=[root],
+            start_cursor="c1",
+            end_cursor="c2",
+            has_older=False,
+            has_newer=False,
+            includes=RoomTimelineIncludes(users={}),
+        )
+        bot.client.get_room_events = AsyncMock(return_value=page)
+
+        cursor_ts = "2026-01-01T10:00:00.000000Z"  # after the root, before the reply
+        hard_cutoff = "2020-01-01T00:00:00.000000Z"
+        collected, candidates = await bot._collect_missed_room_events(
+            "R1", cursor_ts, hard_cutoff, hard_cutoff
+        )
+
+        # Root itself predates the cursor, so nothing to dispatch...
+        assert collected == []
+        # ...but the thread is a backfill candidate.
+        assert candidates == {("R1", "root1")}
+
+    @pytest.mark.asyncio
+    async def test_no_candidate_when_last_reply_at_or_before_cursor(self, bot):
+        """A thread whose most recent reply is at/older than the cursor isn't
+        a candidate -- nothing was missed."""
+        root = _threaded_root_tev("root1", _ts(8, 0), _ts(9, 0))
+        page = RoomTimelinePage(
+            events=[root],
+            start_cursor="c1",
+            end_cursor="c2",
+            has_older=False,
+            has_newer=False,
+            includes=RoomTimelineIncludes(users={}),
+        )
+        bot.client.get_room_events = AsyncMock(return_value=page)
+
+        cursor_ts = "2026-01-01T10:00:00.000000Z"  # after the last reply
+        hard_cutoff = "2020-01-01T00:00:00.000000Z"
+        _, candidates = await bot._collect_missed_room_events(
+            "R1", cursor_ts, hard_cutoff, hard_cutoff
+        )
+
+        assert candidates == set()
+
+    @pytest.mark.asyncio
+    async def test_candidate_falls_back_to_event_id_when_summary_blank(self, bot):
+        """The root's own ``thread.thread_root_event_id`` may be blank; the
+        root event id IS the thread root, so the candidate falls back to it."""
+        root = _threaded_root_tev("root1", _ts(8, 0), _ts(12, 0), thread_root_event_id=None)
+        page = RoomTimelinePage(
+            events=[root],
+            start_cursor="c1",
+            end_cursor="c2",
+            has_older=False,
+            has_newer=False,
+            includes=RoomTimelineIncludes(users={}),
+        )
+        bot.client.get_room_events = AsyncMock(return_value=page)
+
+        cursor_ts = "2026-01-01T10:00:00.000000Z"
+        hard_cutoff = "2020-01-01T00:00:00.000000Z"
+        _, candidates = await bot._collect_missed_room_events(
+            "R1", cursor_ts, hard_cutoff, hard_cutoff
+        )
+
+        assert candidates == {("R1", "root1")}
+
+    @pytest.mark.asyncio
+    async def test_no_candidate_for_root_older_than_discovery_window(self, bot):
+        """A root older than the (tighter) discovery cutoff isn't a candidate
+        even when its thread saw a reply after the cursor -- discovery is
+        bounded to a smaller window than the dispatch walk, so routine
+        reconnects don't re-scan a full hour just to find thread activity. The
+        root is still walked (and dispatch-collected as a missed message), just
+        not treated as a thread-backfill candidate."""
+        root = _threaded_root_tev("root1", _ts(8, 0), _ts(12, 0))
+        page = RoomTimelinePage(
+            events=[root],
+            start_cursor="c1",
+            end_cursor="c2",
+            has_older=False,
+            has_newer=False,
+            includes=RoomTimelineIncludes(users={}),
+        )
+        bot.client.get_room_events = AsyncMock(return_value=page)
+
+        cursor_ts = "2026-01-01T07:00:00.000000Z"  # before the root
+        hard_cutoff = "2020-01-01T00:00:00.000000Z"
+        discovery_cutoff = "2026-01-01T09:00:00.000000Z"  # after the root at 08:00
+        collected, candidates = await bot._collect_missed_room_events(
+            "R1", cursor_ts, hard_cutoff, discovery_cutoff
+        )
+
+        # Root is a missed room message (newer than the cursor) so it's
+        # collected, but it's outside the discovery window, so no backfill.
+        assert {tev.id for _, tev, _ in collected} == {"root1"}
+        assert candidates == set()
+
+    @pytest.mark.asyncio
+    async def test_collect_thread_events_excludes_root(self, bot):
+        """The root comes back in the thread timeline too, but it already
+        flows through the room path, so it's never emitted as a reply."""
+        root = _posted_tev("root1", 8, 0, body="root")
+        reply1 = _posted_tev("reply-1", 9, 0, body="r1")
+        reply2 = _posted_tev("reply-2", 12, 0, body="r2")
+        page = RoomTimelinePage(
+            events=[root, reply1, reply2],  # oldest-first
+            start_cursor="c1",
+            end_cursor="c2",
+            has_older=False,
+            has_newer=False,
+            includes=RoomTimelineIncludes(users={}),
+        )
+        bot.client.get_thread_events = AsyncMock(return_value=page)
+
+        cursor_ts = "2026-01-01T07:00:00.000000Z"  # before everything
+        hard_cutoff = "2020-01-01T00:00:00.000000Z"
+        collected = await bot._collect_missed_thread_events("R1", "root1", cursor_ts, hard_cutoff)
+
+        ids = {tev.id for _, tev, _ in collected}
+        assert ids == {"reply-1", "reply-2"}  # root excluded, replies kept
+
+    @pytest.mark.asyncio
+    async def test_collect_thread_events_only_replies_after_cursor(self, bot):
+        """Only replies newer than the cursor are collected."""
+        root = _posted_tev("root1", 8, 0, body="root")
+        reply_stale = _posted_tev("reply-stale", 9, 0, body="stale")
+        reply_new = _posted_tev("reply-new", 12, 0, body="new")
+        page = RoomTimelinePage(
+            events=[root, reply_stale, reply_new],  # oldest-first
+            start_cursor="c1",
+            end_cursor="c2",
+            has_older=False,
+            has_newer=False,
+            includes=RoomTimelineIncludes(users={}),
+        )
+        bot.client.get_thread_events = AsyncMock(return_value=page)
+
+        cursor_ts = "2026-01-01T10:00:00.000000Z"  # between stale and new
+        hard_cutoff = "2020-01-01T00:00:00.000000Z"
+        collected = await bot._collect_missed_thread_events("R1", "root1", cursor_ts, hard_cutoff)
+
+        ids = {tev.id for _, tev, _ in collected}
+        assert ids == {"reply-new"}
+
+    @pytest.mark.asyncio
+    async def test_catch_up_interleaves_backfilled_reply(self, bot):
+        """A backfilled thread reply merges into the room stream and
+        dispatches in chronological order relative to a plain room message --
+        as a ``message_posted`` with ``thread_root_event_id`` set."""
+        # All within the thread-discovery window so the root is found.
+        root = _recent_threaded_root_tev("root1", 12, 4)  # replied to at 4 min ago
+        mid = _recent_posted_tev("EM", 8, body="!mid")
+        reply = _recent_reply_tev("reply1", 4, "root1")
+
+        room_page = RoomTimelinePage(
+            events=[root, mid],  # oldest-first
+            start_cursor="c1",
+            end_cursor="c2",
+            has_older=False,
+            has_newer=False,
+            includes=RoomTimelineIncludes(users={}),
+        )
+        thread_page = RoomTimelinePage(
+            events=[root, reply],  # root comes back too; it's excluded
+            start_cursor="ct1",
+            end_cursor="ct2",
+            has_older=False,
+            has_newer=False,
+            includes=RoomTimelineIncludes(users={}),
+        )
+        bot.client.get_room_events = AsyncMock(return_value=room_page)
+        bot.client.get_thread_events = AsyncMock(return_value=thread_page)
+        bot.client.list_rooms = AsyncMock(return_value=[_room_with_viewer_state("R1")])
+        bot._save_state = MagicMock()
+        bot._event_handlers.append(
+            EventHandler(event_type="message_posted", callback=AsyncMock())
+        )
+
+        dispatched = []
+        original_dispatch = bot._dispatch
+
+        async def tracking_dispatch(event):
+            dispatched.append(event)
+            return await original_dispatch(event)
+
+        bot._dispatch = tracking_dispatch
+
+        await bot._catch_up()
+
+        # Root (12m) -> plain room message (8m) -> backfilled reply (4m).
+        assert [e.id for e in dispatched] == ["root1", "EM", "reply1"]
+
+        # The reply reached dispatch carrying its thread linkage.
+        reply_event = next(e for e in dispatched if e.id == "reply1")
+        assert reply_event.event.thread_root_event_id == "root1"
+
+        # GetThreadEvents was consulted for the discovered candidate.
+        bot.client.get_thread_events.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_catch_up_backfills_reply_to_preexisting_thread(self, bot):
+        """The whole point of the feature, end to end: a thread whose root
+        was posted (and dispatched) *before* the disconnect gets a reply
+        *during* the gap. With a real stored cursor between the two, catch-up
+        must dispatch only the reply -- never the root (already seen before
+        the gap) and never twice.
+        """
+        from chatto_bot.types import format_cursor
+
+        # Gap shorter than the discovery window so the pre-cursor root is both
+        # below the cursor AND still inside the window. Root at 10m ago (below
+        # the cursor), reply at 2m ago (above it).
+        root = _recent_threaded_root_tev("root1", 10, 2)
+        reply = _recent_reply_tev("reply1", 2, "root1")
+        bot._cursor["_global"] = format_cursor(
+            Timestamp.from_datetime(_recent_dt(6))  # between root and reply
+        )
+
+        room_page = RoomTimelinePage(
+            events=[root],
+            start_cursor="c1",
+            end_cursor="c2",
+            has_older=False,
+            has_newer=False,
+            includes=RoomTimelineIncludes(users={}),
+        )
+        thread_page = RoomTimelinePage(
+            events=[root, reply],  # root comes back too; it must be excluded
+            start_cursor="ct1",
+            end_cursor="ct2",
+            has_older=False,
+            has_newer=False,
+            includes=RoomTimelineIncludes(users={}),
+        )
+        bot.client.get_room_events = AsyncMock(return_value=room_page)
+        bot.client.get_thread_events = AsyncMock(return_value=thread_page)
+        bot.client.list_rooms = AsyncMock(return_value=[_room_with_viewer_state("R1")])
+        bot._save_state = MagicMock()
+        bot._event_handlers.append(
+            EventHandler(event_type="message_posted", callback=AsyncMock())
+        )
+
+        dispatched = []
+        original_dispatch = bot._dispatch
+
+        async def tracking_dispatch(event):
+            dispatched.append(event)
+            return await original_dispatch(event)
+
+        bot._dispatch = tracking_dispatch
+
+        await bot._catch_up()
+
+        # Only the reply -- the pre-cursor root is neither replayed (it's
+        # below the cursor) nor double-dispatched (excluded from the thread
+        # page by id).
+        assert [e.id for e in dispatched] == ["reply1"]
+        assert dispatched[0].event.thread_root_event_id == "root1"
 
 
 class TestOnEnvelopeUnauthenticated:
