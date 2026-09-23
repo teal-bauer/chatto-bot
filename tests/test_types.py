@@ -17,6 +17,7 @@ from chatto_bot._pb.chatto.api.v1.link_previews_pb import (
 )
 from chatto_bot._pb.chatto.api.v1.message_types_pb import Message
 from chatto_bot._pb.chatto.api.v1.users_pb import User as ProtoUser
+from chatto_bot._pb.chatto.realtime.v1 import events_pb as ev
 from chatto_bot._pb.chatto.realtime.v1 import realtime_pb as rt
 from chatto_bot._pb.chatto.api.v1.presence_pb import PresenceStatus
 from chatto_bot.types import (
@@ -38,8 +39,8 @@ from chatto_bot.types import (
 )
 
 
-def _envelope(field: str, payload, *, id="E1", actor_id="U1", created_at=None) -> rt.RealtimeEventEnvelope:
-    return rt.RealtimeEventEnvelope(
+def _envelope(field: str, payload, *, id="E1", actor_id="U1", created_at=None) -> rt.RealtimeEvent:
+    return rt.RealtimeEvent(
         id=id,
         actor_id=actor_id,
         created_at=created_at or Timestamp.from_datetime(
@@ -51,43 +52,41 @@ def _envelope(field: str, payload, *, id="E1", actor_id="U1", created_at=None) -
 
 class TestEventName:
     def test_one_to_one_case(self):
-        env = _envelope("reaction_added", rt.RealtimeReactionEvent(room_id="R1", message_event_id="E1", emoji="heart"))
+        env = _envelope("reaction_added", ev.ReactionAddedEvent(room_id="R1", message_event_id="E1", emoji="heart"))
         assert event_name(env) == "reaction_added"
 
     def test_message_posted(self):
-        env = _envelope("message_posted", rt.RealtimeMessagePostedEvent(room_id="R1", message_event_id="E1"))
+        env = _envelope("message_posted", ev.MessagePostedEvent(room_id="R1"))
         assert event_name(env) == "message_posted"
 
     def test_renames(self):
-        edited = _envelope("message_edited", rt.RealtimeMessageEditedEvent(room_id="R1", message_event_id="E1"))
+        edited = _envelope("message_edited", ev.MessageEditedEvent(room_id="R1", message_event_id="E1"))
         assert event_name(edited) == "message_updated"
 
         retracted = _envelope(
             "message_retracted",
-            rt.RealtimeMessageRetractedEvent(room_id="R1", message_event_id="E1"),
+            ev.MessageRetractedEvent(room_id="R1", message_event_id="E1"),
         )
         assert event_name(retracted) == "message_deleted"
 
         succeeded = _envelope(
             "asset_processing_succeeded",
-            rt.RealtimeAssetProcessingEvent(room_id="R1", asset_id="A1"),
+            ev.AssetProcessingSucceededEvent(room_id="R1", asset_id="A1"),
         )
         assert event_name(succeeded) == "video_processing_completed"
 
     def test_unmodeled_oneof_case_is_unknown(self):
-        env = _envelope("some_future_event", rt.RealtimeRoomEvent(room_id="R1"))
+        env = _envelope("some_future_event", ev.RoomArchivedEvent(room_id="R1"))
         assert event_name(env) == "unknown"
 
     def test_empty_oneof_is_unknown(self):
-        env = rt.RealtimeEventEnvelope(id="E1", actor_id="U1")
+        env = rt.RealtimeEvent(id="E1", actor_id="U1")
         assert event_name(env) == "unknown"
 
 
 class TestParseEnvelope:
     def test_message_posted_uses_hydrated_message_over_signal(self):
-        env = _envelope(
-            "message_posted", rt.RealtimeMessagePostedEvent(room_id="R-signal", message_event_id="E1")
-        )
+        env = _envelope("message_posted", ev.MessagePostedEvent(room_id="R-signal"))
         message = Message(id="E1", room_id="R-hydrated", body="hello world")
         actor = ProtoUser(id="U1", login="alice", display_name="Alice")
 
@@ -105,9 +104,7 @@ class TestParseEnvelope:
     def test_message_posted_without_hydration_falls_back_to_signal(self):
         """Defensive fallback for direct parse_envelope() use; normal dispatch
         always hydrates message_posted (see hydrate.py)."""
-        env = _envelope(
-            "message_posted", rt.RealtimeMessagePostedEvent(room_id="R-signal", message_event_id="E1")
-        )
+        env = _envelope("message_posted", ev.MessagePostedEvent(room_id="R-signal"))
         room_event = parse_envelope(env)
         assert isinstance(room_event.event, MessagePostedEvent)
         assert room_event.event.room_id == "R-signal"
@@ -116,15 +113,16 @@ class TestParseEnvelope:
     def test_rename_builds_correct_dataclass(self):
         env = _envelope(
             "message_retracted",
-            rt.RealtimeMessageRetractedEvent(room_id="R1", message_event_id="E1", reason="spam"),
+            ev.MessageRetractedEvent(room_id="R1", message_event_id="E1"),
         )
         room_event = parse_envelope(env)
         assert isinstance(room_event.event, MessageDeletedEvent)
-        assert room_event.event.reason == "spam"
+        # The retraction signal no longer carries a reason.
+        assert room_event.event.reason is None
 
     def test_message_edited_builds_updated_dataclass(self):
         env = _envelope(
-            "message_edited", rt.RealtimeMessageEditedEvent(room_id="R1", message_event_id="E9")
+            "message_edited", ev.MessageEditedEvent(room_id="R1", message_event_id="E9")
         )
         room_event = parse_envelope(env)
         assert isinstance(room_event.event, MessageUpdatedEvent)
@@ -138,7 +136,7 @@ class TestParseEnvelope:
         message_updated handler should see the edited body without an extra
         ctx.fetch_message() round trip."""
         env = _envelope(
-            "message_edited", rt.RealtimeMessageEditedEvent(room_id="R1", message_event_id="E9")
+            "message_edited", ev.MessageEditedEvent(room_id="R1", message_event_id="E9")
         )
         message = Message(id="E9", room_id="R1", body="edited text")
 
@@ -151,14 +149,14 @@ class TestParseEnvelope:
     def test_reaction_added(self):
         env = _envelope(
             "reaction_added",
-            rt.RealtimeReactionEvent(room_id="R1", message_event_id="E1", emoji="thumbsup"),
+            ev.ReactionAddedEvent(room_id="R1", message_event_id="E1", emoji="thumbsup"),
         )
         room_event = parse_envelope(env)
         assert isinstance(room_event.event, ReactionAddedEvent)
         assert room_event.event.emoji == "thumbsup"
 
     def test_room_archived(self):
-        env = _envelope("room_archived", rt.RealtimeRoomEvent(room_id="R1"))
+        env = _envelope("room_archived", ev.RoomArchivedEvent(room_id="R1"))
         room_event = parse_envelope(env)
         assert isinstance(room_event.event, RoomArchivedEvent)
         assert room_event.event.room_id == "R1"
@@ -166,20 +164,20 @@ class TestParseEnvelope:
     def test_asset_processing_succeeded_builds_video_completed(self):
         env = _envelope(
             "asset_processing_succeeded",
-            rt.RealtimeAssetProcessingEvent(room_id="R1", asset_id="A1", message_event_id="E1"),
+            ev.AssetProcessingSucceededEvent(room_id="R1", asset_id="A1", message_event_id="E1"),
         )
         room_event = parse_envelope(env)
         assert isinstance(room_event.event, VideoProcessingCompletedEvent)
         assert room_event.event.asset_id == "A1"
 
     def test_unmodeled_oneof_case_becomes_unknown_event(self):
-        env = _envelope("some_future_event", rt.RealtimeRoomEvent(room_id="R1"))
+        env = _envelope("some_future_event", ev.RoomArchivedEvent(room_id="R1"))
         room_event = parse_envelope(env)
         assert isinstance(room_event.event, UnknownEvent)
         assert room_event.event.typename == "some_future_event"
 
     def test_no_actor(self):
-        env = _envelope("room_archived", rt.RealtimeRoomEvent(room_id="R1"), actor_id="")
+        env = _envelope("room_archived", ev.RoomArchivedEvent(room_id="R1"), actor_id="")
         room_event = parse_envelope(env)
         assert room_event.actor is None
         assert room_event.actor_id == ""
@@ -205,7 +203,7 @@ class TestNormalizePresenceStatus:
     def test_user_from_proto_via_parse_envelope(self):
         """End-to-end: an actor with an unset presence_status must not
         surface "UNSPECIFIED" on the public User dataclass."""
-        env = _envelope("room_archived", rt.RealtimeRoomEvent(room_id="R1"))
+        env = _envelope("room_archived", ev.RoomArchivedEvent(room_id="R1"))
         actor = ProtoUser(id="U1", login="alice", display_name="Alice")  # presence_status unset
 
         room_event = parse_envelope(env, actor=actor)
@@ -235,12 +233,20 @@ class TestFormatCursor:
 
 
 class TestRetiredEventNames:
-    def test_retired_names_include_graphql_era_handlers(self):
-        assert "user_created" in RETIRED_EVENT_NAMES
-        assert "user_deleted" in RETIRED_EVENT_NAMES
+    def test_retired_names_include_dead_handlers(self):
+        # Never had a realtime source.
         assert "server_config_updated" in RETIRED_EVENT_NAMES
         assert "mention_status_cleared" in RETIRED_EVENT_NAMES
         assert "heartbeat" in RETIRED_EVENT_NAMES
+        # Dropped by the semantic-event catalogue.
+        assert "notification_created" in RETIRED_EVENT_NAMES
+        assert "session_terminated" in RETIRED_EVENT_NAMES
+
+    def test_account_events_keep_their_old_names_live(self):
+        # user_account_created/deleted dispatch under these old names
+        # (see _ONEOF_RENAMES), so they must not be retired.
+        assert "user_created" not in RETIRED_EVENT_NAMES
+        assert "user_deleted" not in RETIRED_EVENT_NAMES
 
     def test_live_names_are_not_retired(self):
         assert "message_posted" not in RETIRED_EVENT_NAMES
@@ -248,14 +254,13 @@ class TestRetiredEventNames:
 
     def test_warn_if_retired_event_name_does_not_raise(self):
         # Should be a no-op (log a warning) for both retired and live names.
+        warn_if_retired_event_name("heartbeat")
         warn_if_retired_event_name("user_created")
         warn_if_retired_event_name("message_posted")
 
 
 def _posted_with_message(message: Message) -> RoomEvent:
-    env = _envelope(
-        "message_posted", rt.RealtimeMessagePostedEvent(room_id="R-signal", message_event_id="E1")
-    )
+    env = _envelope("message_posted", ev.MessagePostedEvent(room_id="R-signal"))
     return parse_envelope(env, message=message)
 
 
@@ -479,7 +484,7 @@ class TestMessageDeletedAt:
             datetime.datetime(2026, 5, 6, 7, 8, 9, tzinfo=datetime.timezone.utc)
         )
         env = _envelope(
-            "message_edited", rt.RealtimeMessageEditedEvent(room_id="R1", message_event_id="E9")
+            "message_edited", ev.MessageEditedEvent(room_id="R1", message_event_id="E9")
         )
         message = Message(id="E9", room_id="R1", deleted_at=deleted)
 
@@ -490,7 +495,7 @@ class TestMessageDeletedAt:
 
     def test_message_edited_deleted_at_absent(self):
         env = _envelope(
-            "message_edited", rt.RealtimeMessageEditedEvent(room_id="R1", message_event_id="E9")
+            "message_edited", ev.MessageEditedEvent(room_id="R1", message_event_id="E9")
         )
         message = Message(id="E9", room_id="R1", body="still here")
 

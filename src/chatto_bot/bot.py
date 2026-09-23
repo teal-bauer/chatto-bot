@@ -39,7 +39,7 @@ from .types import (
 if TYPE_CHECKING:
     from ._pb.chatto.api.v1.room_directory_pb import RoomWithViewerState
     from ._pb.chatto.api.v1.room_timeline_pb import RoomTimelineEvent, RoomTimelineIncludes
-    from ._pb.chatto.realtime.v1.realtime_pb import RealtimeEventEnvelope
+    from ._pb.chatto.realtime.v1.realtime_pb import RealtimeEvent
 
 logger = logging.getLogger(__name__)
 
@@ -72,8 +72,8 @@ _THREAD_DISCOVERY_MINUTES = 15
 
 # Reverse of types.EVENT_NAME_TO_TYPE: dataclass type -> public event name.
 # Used to recover the dispatch name from an already-parsed RoomEvent without
-# re-deriving it from the realtime envelope (which isn't always available --
-# catch-up events come from RoomTimelineEvent, not RealtimeEventEnvelope).
+# re-deriving it from the realtime event (which isn't always available --
+# catch-up events come from RoomTimelineEvent, not RealtimeEvent).
 _TYPE_TO_EVENT_NAME: dict[type, str] = {v: k for k, v in EVENT_NAME_TO_TYPE.items()}
 
 
@@ -363,7 +363,7 @@ class Bot:
             return bool(self._commands) or self._has_handler_for("message_posted")
         return self._has_handler_for(name)
 
-    async def _on_envelope(self, envelope: RealtimeEventEnvelope) -> None:
+    async def _on_envelope(self, envelope: RealtimeEvent) -> None:
         """Realtime dispatch entrypoint, passed to ``Realtime.run()``."""
         name = event_name(envelope)
         if not self._will_dispatch(name):

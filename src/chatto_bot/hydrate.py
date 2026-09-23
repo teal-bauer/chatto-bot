@@ -1,13 +1,13 @@
-"""Turn realtime invalidation-signal envelopes into hydrated objects.
+"""Turn realtime invalidation-signal events into hydrated objects.
 
-Realtime events (``chatto.realtime.v1.RealtimeEventEnvelope``) are signals
+Realtime events (``chatto.realtime.v1.RealtimeEvent``) are signals
 first: most carry only IDs and small inline hints, not the full renderable
-objects handlers expect (see the hydration notes on each message in
-``realtime.proto``). This module fetches those full objects -- a rendered
-``Message`` for message events, a resolved actor ``User`` -- before the bot
-builds a ``Context`` and dispatches to handlers.
+objects handlers expect (see the hydration notes on each payload message in
+``realtime.proto``/``events.proto``). This module fetches those full objects --
+a rendered ``Message`` for message events, a resolved actor ``User`` -- before
+the bot builds a ``Context`` and dispatches to handlers.
 
-Gating (whether to hydrate a given envelope at all, e.g. "only if a handler
+Gating (whether to hydrate a given event at all, e.g. "only if a handler
 is registered") is the caller's job, not this module's: ``Hydrator.hydrate``
 unconditionally does the fetch/resolve work it's asked to do.
 """
@@ -23,7 +23,7 @@ from .types import event_name
 if TYPE_CHECKING:
     from ._pb.chatto.api.v1.message_types_pb import Message
     from ._pb.chatto.api.v1.users_pb import User
-    from ._pb.chatto.realtime.v1.realtime_pb import RealtimeEventEnvelope
+    from ._pb.chatto.realtime.v1.realtime_pb import RealtimeEvent
     from .client import Client
     from .usercache import UserCache
 
@@ -31,20 +31,20 @@ logger = logging.getLogger(__name__)
 
 # message_edited is dispatched under the "message_updated" handler name (see
 # types._ONEOF_RENAMES), but the oneof field name below is what
-# envelope.event.field actually reports -- that's what we match on.
+# event.event.field actually reports -- that's what we match on.
 _MESSAGE_FETCH_FIELDS = frozenset({"message_posted", "message_edited"})
 
 
 @dataclass
 class HydratedEvent:
-    """Envelope plus whatever was fetched to satisfy dispatch.
+    """Event plus whatever was fetched to satisfy dispatch.
 
     ``message``/``actor`` are the GENERATED proto objects (not the public
     dataclasses in ``types.py``) -- the caller building ``Context`` passes
     these through ``types.parse_envelope`` to get the public ``RoomEvent``.
     """
 
-    envelope: RealtimeEventEnvelope
+    envelope: RealtimeEvent
     event_name: str
     message: Message | None = None
     actor: User | None = None
@@ -57,13 +57,15 @@ class Hydrator:
         self._client = client
         self._users = users
 
-    async def hydrate(self, envelope: RealtimeEventEnvelope) -> HydratedEvent | None:
-        """Hydrate one envelope, or return None if it should be dropped.
+    async def hydrate(self, envelope: RealtimeEvent) -> HydratedEvent | None:
+        """Hydrate one event, or return None if it should be dropped.
 
         message_posted/message_edited fetch the current ``Message`` via
         ``Client.get_message``; if that comes back None (retracted between
         the signal and our fetch, or otherwise gone) the whole dispatch is
         dropped rather than handed to handlers with a missing message.
+        message_posted carries no message ID of its own: the realtime event
+        ID is the posted message's event ID.
         """
         name = event_name(envelope)
         oneof = envelope.event
@@ -73,7 +75,9 @@ class Hydrator:
         message: Message | None = None
         if field_name in _MESSAGE_FETCH_FIELDS and payload is not None:
             room_id = getattr(payload, "room_id", "")
-            message_event_id = getattr(payload, "message_event_id", "")
+            message_event_id = getattr(payload, "message_event_id", "") or (
+                envelope.id if field_name == "message_posted" else ""
+            )
             # TODO: batch via Client.batch_get_messages when dispatching a
             # burst of envelopes from the same room instead of fetching one
             # message at a time.

@@ -51,12 +51,9 @@ def _server_frame(field: str, payload) -> bytes:
 
 
 def _handshake_frames() -> list[bytes]:
-    """hello + subscribed frames, enough to get `_run_connection` past the
-    handshake and into the steady-state event loop."""
-    return [
-        _server_frame("hello", rt.RealtimeServerHello(heartbeat_interval_seconds=30)),
-        _server_frame("subscribed", rt.RealtimeSubscribed()),
-    ]
+    """caught_up, enough to get `_run_connection` past the handshake and into
+    the steady-state event loop."""
+    return [_server_frame("caught_up", rt.RealtimeCaughtUp())]
 
 
 def _make_realtime(monkeypatch: pytest.MonkeyPatch, frames: list[bytes]) -> Realtime:
@@ -77,7 +74,7 @@ def _make_realtime(monkeypatch: pytest.MonkeyPatch, frames: list[bytes]) -> Real
 class TestDispatchGuardPropagation:
     @pytest.mark.asyncio
     async def test_unauthenticated_from_on_envelope_propagates(self, monkeypatch):
-        envelope = rt.RealtimeEventEnvelope(id="E1", actor_id="U1")
+        envelope = rt.RealtimeEvent(id="E1", actor_id="U1")
         frames = _handshake_frames() + [_server_frame("event", envelope)]
         realtime = _make_realtime(monkeypatch, frames)
 
@@ -94,7 +91,7 @@ class TestDispatchGuardPropagation:
 
     @pytest.mark.asyncio
     async def test_realtime_stopped_from_on_envelope_propagates(self, monkeypatch):
-        envelope = rt.RealtimeEventEnvelope(id="E1", actor_id="U1")
+        envelope = rt.RealtimeEvent(id="E1", actor_id="U1")
         frames = _handshake_frames() + [_server_frame("event", envelope)]
         realtime = _make_realtime(monkeypatch, frames)
 
@@ -108,7 +105,7 @@ class TestDispatchGuardPropagation:
     async def test_ordinary_handler_error_is_swallowed(self, monkeypatch):
         """An unrelated bug in a bot's handler shouldn't tear the connection
         down -- only Unauthenticated/RealtimeStopped are special-cased."""
-        envelope = rt.RealtimeEventEnvelope(id="E1", actor_id="U1")
+        envelope = rt.RealtimeEvent(id="E1", actor_id="U1")
         frames = _handshake_frames() + [
             _server_frame("event", envelope),
             _server_frame("event", envelope),

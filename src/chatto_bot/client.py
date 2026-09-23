@@ -17,12 +17,12 @@ from connectrpc.code import Code
 from connectrpc.errors import ConnectError
 from protobuf import Oneof
 
-from ._pb.chatto.api.v1.member_directory_pb import (
+from ._pb.chatto.api.v1.member_directory_pb import DirectoryMember
+from ._pb.chatto.api.v1.user_service_pb import (
     BatchGetUsersRequest,
-    DirectoryMember,
     ListUsersRequest,
 )
-from ._pb.chatto.api.v1.member_directory_connect import UserServiceClient
+from ._pb.chatto.api.v1.user_service_connect import UserServiceClient
 from ._pb.chatto.api.v1.message_types_pb import Message
 from ._pb.chatto.api.v1.messages_connect import MessageServiceClient
 from ._pb.chatto.api.v1.messages_pb import (
@@ -33,7 +33,7 @@ from ._pb.chatto.api.v1.messages_pb import (
     UpdateMessageRequest,
 )
 from ._pb.chatto.api.v1.pagination_pb import PageRequest
-from ._pb.chatto.api.v1.presence_pb import PresenceStatus, UpdatePresenceRequest
+from ._pb.chatto.api.v1.presence_pb import PresenceStatus, SetPresenceRequest
 from ._pb.chatto.api.v1.reactions_pb import AddReactionRequest, RemoveReactionRequest
 from ._pb.chatto.api.v1.read_state_pb import MarkRoomAsReadRequest
 from ._pb.chatto.api.v1.room_directory_connect import RoomDirectoryServiceClient
@@ -53,9 +53,9 @@ from ._pb.chatto.api.v1.rooms_connect import RoomServiceClient
 from ._pb.chatto.api.v1.rooms_pb import (
     JoinRoomRequest,
     LeaveRoomRequest,
+    RefreshTypingIndicatorRequest,
     Room,
     StartDMRequest,
-    UpdateTypingIndicatorRequest,
 )
 from ._pb.chatto.api.v1.threads_connect import ThreadServiceClient
 from ._pb.chatto.api.v1.account_connect import MyAccountServiceClient
@@ -156,19 +156,31 @@ class Client:
     async def list_rooms(
         self, scope: str | RoomDirectoryScope | None = None
     ) -> list[RoomWithViewerState]:
-        """List rooms visible to the current user.
+        """List every room visible to the current user.
 
-        ``RoomDirectoryService.ListRooms`` has no ``PageRequest``/``PageInfo`` --
-        unlike most other list RPCs, it's documented as returning a finite snapshot
-        of every matching room in one response, so there is nothing to paginate.
+        ``RoomDirectoryService.ListRooms`` is paginated (``PageRequest``/
+        ``PageInfo``: default 50 rooms, capped at 100 per request), so this
+        loops until ``page.has_more`` is false and returns the complete
+        directory in one list.
         """
         client = self._transport.client(RoomDirectoryServiceClient)
-        resp = await self._call_or_raise(
-            client.list_rooms(
-                ListRoomsRequest(scope=_resolve_scope(scope)), headers=self._headers()
+        rooms: list[RoomWithViewerState] = []
+        offset = 0
+        while True:
+            resp = await self._call_or_raise(
+                client.list_rooms(
+                    ListRoomsRequest(
+                        scope=_resolve_scope(scope),
+                        page=PageRequest(limit=100, offset=offset),
+                    ),
+                    headers=self._headers(),
+                )
             )
-        )
-        return list(resp.rooms)
+            rooms.extend(resp.rooms)
+            page = resp.page
+            if page is None or not page.has_more or not resp.rooms:
+                return rooms
+            offset += len(resp.rooms)
 
     async def get_room(self, room_id: str) -> Room:
         client = self._transport.client(RoomDirectoryServiceClient)
@@ -188,12 +200,13 @@ class Client:
         """Leave a room. Raises :class:`ChattoError` (typically
         ``Code.FAILED_PRECONDITION``) for DM and universal rooms, which cannot be
         left; callers should catch it to message the user rather than crash.
+        The RPC returns an empty response on success, so ``True`` means "left".
         """
         client = self._transport.client(RoomServiceClient)
-        resp = await self._call_or_raise(
+        await self._call_or_raise(
             client.leave_room(LeaveRoomRequest(room_id=room_id), headers=self._headers())
         )
-        return resp.left
+        return True
 
     async def start_dm(self, participant_ids: list[str]) -> Room:
         client = self._transport.client(RoomServiceClient)
@@ -408,8 +421,8 @@ class Client:
         explicitly (the server rejects it)."""
         client = self._transport.client(MyAccountServiceClient)
         await self._call_or_raise(
-            client.update_presence(
-                UpdatePresenceRequest(status=_resolve_presence(status)),
+            client.set_presence(
+                SetPresenceRequest(status=_resolve_presence(status)),
                 headers=self._headers(),
             )
         )
@@ -432,8 +445,8 @@ class Client:
             return
         client = self._transport.client(RoomServiceClient)
         await self._call_or_raise(
-            client.update_typing_indicator(
-                UpdateTypingIndicatorRequest(
+            client.refresh_typing_indicator(
+                RefreshTypingIndicatorRequest(
                     room_id=room_id, thread_root_event_id=thread_root_event_id or ""
                 ),
                 headers=self._headers(),

@@ -24,7 +24,7 @@ if TYPE_CHECKING:
     # dependency on _pb or the protobuf runtime.
     from ._pb.chatto.api.v1.message_types_pb import Message as _ProtoMessage
     from ._pb.chatto.api.v1.users_pb import User as _ProtoUser
-    from ._pb.chatto.realtime.v1.realtime_pb import RealtimeEventEnvelope
+    from ._pb.chatto.realtime.v1.realtime_pb import RealtimeEvent
     from protobuf.wkt import Timestamp
 
 logger = logging.getLogger(__name__)
@@ -445,6 +445,125 @@ class SessionTerminatedEvent:
     reason: str | None = None
 
 
+# --- Semantic-event catalogue: one dataclass per current events.proto oneof case ---
+
+
+@dataclass
+class RoomSlowModeChangedEvent:
+    room_id: str
+    slow_mode_seconds: int = 0
+
+
+@dataclass
+class RoomThreadingModeChangedEvent:
+    room_id: str
+    threading_mode: str = ""
+
+
+@dataclass
+class MessagePinnedEvent:
+    room_id: str
+    message_event_id: str
+
+
+@dataclass
+class MessageUnpinnedEvent:
+    room_id: str
+    message_event_id: str
+
+
+@dataclass
+class ServerMotdChangedEvent:
+    motd: str = ""
+
+
+@dataclass
+class ViewerPreferencesChangedEvent:
+    """Caller-private preferences changed; refetch ViewerService for details."""
+
+
+@dataclass
+class ThreadViewerStateChangedEvent:
+    room_id: str
+    thread_root_event_id: str = ""
+    is_following: bool = False
+
+
+@dataclass
+class ServerProfileChangedEvent:
+    """Public server profile changed; refetch ServerService for details."""
+
+
+@dataclass
+class NotificationOccurrencesChangedEvent:
+    # Best-effort live hint, absent for updates/removals; clients decide
+    # whether to alert after reading current notification state.
+    created_notification_id: str | None = None
+
+
+@dataclass
+class NotificationUnreadStateChangedEvent:
+    room_id: str
+    thread_root_event_id: str = ""
+
+
+@dataclass
+class RoomReadStateChangedEvent:
+    room_id: str
+
+
+@dataclass
+class RoomLayoutChangedEvent:
+    """Room groups/layout changed; refetch ListRoomGroups for details."""
+
+
+@dataclass
+class RoleCreatedEvent:
+    role_name: str = ""
+
+
+@dataclass
+class RoleUpdatedEvent:
+    role_name: str = ""
+
+
+@dataclass
+class RoleDeletedEvent:
+    role_name: str = ""
+
+
+@dataclass
+class RolesReorderedEvent:
+    role_names: list[str] = field(default_factory=list)
+
+
+@dataclass
+class RoleAssignedEvent:
+    user_id: str = ""
+    role_name: str = ""
+
+
+@dataclass
+class RoleRevokedEvent:
+    user_id: str = ""
+    role_name: str = ""
+
+
+@dataclass
+class RolePermissionsChangedEvent:
+    role_name: str = ""
+
+
+@dataclass
+class ViewerPermissionsChangedEvent:
+    """Viewer permissions may have changed; refetch before displaying them."""
+
+
+@dataclass
+class ViewerPresencePreferenceChangedEvent:
+    """Private presence choice changed; refetch GetPresencePreference."""
+
+
 # --- Retired events: kept as documentation + registration targets for
 # warn_if_retired_event_name(); realtime.v1 has no signal for these, so a
 # handler registered under one of these names will never fire. ---
@@ -537,6 +656,27 @@ EventType = (
     | MentionNotificationEvent
     | NewDirectMessageNotificationEvent
     | SessionTerminatedEvent
+    | RoomSlowModeChangedEvent
+    | RoomThreadingModeChangedEvent
+    | MessagePinnedEvent
+    | MessageUnpinnedEvent
+    | ServerMotdChangedEvent
+    | ViewerPreferencesChangedEvent
+    | ThreadViewerStateChangedEvent
+    | ServerProfileChangedEvent
+    | NotificationOccurrencesChangedEvent
+    | NotificationUnreadStateChangedEvent
+    | RoomReadStateChangedEvent
+    | RoomLayoutChangedEvent
+    | RoleCreatedEvent
+    | RoleUpdatedEvent
+    | RoleDeletedEvent
+    | RolesReorderedEvent
+    | RoleAssignedEvent
+    | RoleRevokedEvent
+    | RolePermissionsChangedEvent
+    | ViewerPermissionsChangedEvent
+    | ViewerPresencePreferenceChangedEvent
     | ServerConfigUpdatedEvent
     | UserCreatedEvent
     | UserDeletedEvent
@@ -549,13 +689,21 @@ EventType = (
 # --- Event-name compatibility table ---
 #
 # realtime.proto oneof case name -> public snake_case handler name
-# (the name bot authors pass to @on_event(...)). Almost every case matches
-# its oneof field name 1:1; only these three were renamed to keep the old
-# GraphQL-era handler names bots already use:
+# (the name bot authors pass to @on_event(...)). Most cases match their oneof
+# field name 1:1; these are renamed to keep the handler names bots already
+# use -- the three GraphQL-era renames plus names the realtime catalogue
+# itself changed:
 _ONEOF_RENAMES: dict[str, str] = {
     "message_edited": "message_updated",
     "message_retracted": "message_deleted",
     "asset_processing_succeeded": "video_processing_completed",
+    "user_profile_changed": "user_profile_updated",
+    "user_account_created": "user_created",
+    "user_account_deleted": "user_deleted",
+    "voice_call_started": "call_started",
+    "voice_call_participant_joined": "call_participant_joined",
+    "voice_call_participant_left": "call_participant_left",
+    "voice_call_ended": "call_ended",
 }
 
 # snake_case handler name -> dataclass. Covers every live realtime.v1 oneof
@@ -602,26 +750,69 @@ EVENT_NAME_TO_TYPE: dict[str, type] = {
     "mention_notification": MentionNotificationEvent,
     "new_direct_message_notification": NewDirectMessageNotificationEvent,
     "session_terminated": SessionTerminatedEvent,
+    # Live again under their old names, mapped from user_account_created /
+    # user_account_deleted (see _ONEOF_RENAMES).
+    "user_created": UserCreatedEvent,
+    "user_deleted": UserDeletedEvent,
+    # Semantic-event catalogue additions.
+    "room_slow_mode_changed": RoomSlowModeChangedEvent,
+    "room_threading_mode_changed": RoomThreadingModeChangedEvent,
+    "message_pinned": MessagePinnedEvent,
+    "message_unpinned": MessageUnpinnedEvent,
+    "server_motd_changed": ServerMotdChangedEvent,
+    "viewer_preferences_changed": ViewerPreferencesChangedEvent,
+    "thread_viewer_state_changed": ThreadViewerStateChangedEvent,
+    "server_profile_changed": ServerProfileChangedEvent,
+    "notification_occurrences_changed": NotificationOccurrencesChangedEvent,
+    "notification_unread_state_changed": NotificationUnreadStateChangedEvent,
+    "room_read_state_changed": RoomReadStateChangedEvent,
+    "room_layout_changed": RoomLayoutChangedEvent,
+    "role_created": RoleCreatedEvent,
+    "role_updated": RoleUpdatedEvent,
+    "role_deleted": RoleDeletedEvent,
+    "roles_reordered": RolesReorderedEvent,
+    "role_assigned": RoleAssignedEvent,
+    "role_revoked": RoleRevokedEvent,
+    "role_permissions_changed": RolePermissionsChangedEvent,
+    "viewer_permissions_changed": ViewerPermissionsChangedEvent,
+    "viewer_presence_preference_changed": ViewerPresencePreferenceChangedEvent,
     # Retired: no realtime.v1 source, never dispatched. Kept so
     # warn_if_retired_event_name() and documentation have something to point
     # at.
-    "user_created": UserCreatedEvent,
-    "user_deleted": UserDeletedEvent,
     "server_config_updated": ServerConfigUpdatedEvent,
     "mention_status_cleared": MentionStatusClearedEvent,
     "heartbeat": HeartbeatEvent,
     "unknown": UnknownEvent,
 }
 
-# Old GraphQL-era handler names with no realtime.v1 equivalent. A bot that
+# Old handler names the realtime stream no longer emits. A bot that
 # registers one of these will never see it fire.
 RETIRED_EVENT_NAMES: frozenset[str] = frozenset(
     {
-        "user_created",
-        "user_deleted",
+        # Never had a realtime.v1 source.
         "server_config_updated",
         "mention_status_cleared",
         "heartbeat",
+        # Superseded by the semantic-event catalogue: these now arrive as
+        # refetch hints (notification_occurrences_changed,
+        # notification_unread_state_changed, room_read_state_changed,
+        # thread_viewer_state_changed, viewer_preferences_changed,
+        # server_profile_changed, viewer_presence_preference_changed) or
+        # not at all.
+        "notification_created",
+        "notification_dismissed",
+        "notification_level_changed",
+        "thread_follow_changed",
+        "room_marked_as_read",
+        "server_updated",
+        "user_custom_status_set",
+        "user_custom_status_cleared",
+        "server_user_preferences_updated",
+        "room_groups_updated",
+        "server_member_deleted",
+        "mention_notification",
+        "new_direct_message_notification",
+        "session_terminated",
     }
 )
 
@@ -638,9 +829,8 @@ def warn_if_retired_event_name(name: str) -> None:
     if name in RETIRED_EVENT_NAMES and name not in _warned_retired_names:
         _warned_retired_names.add(name)
         logger.warning(
-            "Registered a handler for %r, which is retired: realtime.v1 has "
-            "no equivalent signal (GraphQL removed in v0.4.0/ADR-042), so "
-            "this handler will never fire.",
+            "Registered a handler for %r, which is retired: realtime.v1 no "
+            "longer emits this event, so this handler will never fire.",
             name,
         )
 
@@ -883,8 +1073,8 @@ def _message_posted_from_proto(signal: Any, message: _ProtoMessage | None) -> Me
     )
 
 
-# field -> builder(payload, message) for every live realtime.proto oneof
-# case. `message` is only consulted by message_posted.
+# field -> builder(payload, message) for every live realtime oneof case.
+# `message` is only consulted by message_posted and message_edited.
 _EVENT_BUILDERS: dict[str, Any] = {
     "message_posted": lambda p, m: _message_posted_from_proto(p, m),
     "message_edited": lambda p, m: MessageUpdatedEvent(
@@ -894,7 +1084,15 @@ _EVENT_BUILDERS: dict[str, Any] = {
         deleted_at=format_cursor(m.deleted_at) if m is not None and m.deleted_at else None,
     ),
     "message_retracted": lambda p, m: MessageDeletedEvent(
-        room_id=p.room_id, message_event_id=p.message_event_id, reason=p.reason
+        room_id=p.room_id,
+        message_event_id=p.message_event_id,
+        reason=getattr(p, "reason", None),
+    ),
+    "message_pinned": lambda p, m: MessagePinnedEvent(
+        room_id=p.room_id, message_event_id=p.message_event_id
+    ),
+    "message_unpinned": lambda p, m: MessageUnpinnedEvent(
+        room_id=p.room_id, message_event_id=p.message_event_id
     ),
     "reaction_added": lambda p, m: ReactionAddedEvent(
         room_id=p.room_id, message_event_id=p.message_event_id, emoji=p.emoji
@@ -905,59 +1103,71 @@ _EVENT_BUILDERS: dict[str, Any] = {
     "user_typing": lambda p, m: UserTypingEvent(
         room_id=p.room_id, thread_root_event_id=p.thread_root_event_id
     ),
+    # presence_changed no longer carries a user ID; parse_envelope fills
+    # user_id from the envelope's actor afterwards.
     "presence_changed": lambda p, m: PresenceChangedEvent(
-        user_id=p.user_id, status=str(p.status)
+        user_id="", status=str(p.status)
     ),
     "room_created": lambda p, m: RoomCreatedEvent(room_id=p.room_id),
     "room_updated": lambda p, m: RoomUpdatedEvent(room_id=p.room_id),
     "room_deleted": lambda p, m: RoomDeletedEvent(room_id=p.room_id),
     "room_archived": lambda p, m: RoomArchivedEvent(room_id=p.room_id),
     "room_unarchived": lambda p, m: RoomUnarchivedEvent(room_id=p.room_id),
-    "user_joined_room": lambda p, m: UserJoinedRoomEvent(room_id=p.room_id),
-    "user_left_room": lambda p, m: UserLeftRoomEvent(room_id=p.room_id),
     "room_universal_changed": lambda p, m: RoomUniversalChangedEvent(
         room_id=p.room_id, universal=p.universal
     ),
-    "notification_created": lambda p, m: NotificationCreatedEvent(
-        notification_id=p.notification_id,
-        room_id=p.room_id or "",
-        event_id=p.event_id or "",
-        in_reply_to_id=p.in_reply_to_id,
-        silent=p.silent,
+    "room_slow_mode_changed": lambda p, m: RoomSlowModeChangedEvent(
+        room_id=p.room_id, slow_mode_seconds=p.slow_mode_seconds
     ),
-    "notification_dismissed": lambda p, m: NotificationDismissedEvent(
-        notification_id=p.notification_id
+    "room_threading_mode_changed": lambda p, m: RoomThreadingModeChangedEvent(
+        room_id=p.room_id, threading_mode=str(p.threading_mode)
     ),
-    "notification_level_changed": lambda p, m: NotificationLevelChangedEvent(
-        room_id=p.room_id, level=str(p.level), effective_level=str(p.effective_level)
-    ),
-    "thread_follow_changed": lambda p, m: ThreadFollowChangedEvent(
-        room_id=p.room_id,
-        thread_root_event_id=p.thread_root_event_id,
-        following=p.following,
-    ),
-    "room_marked_as_read": lambda p, m: RoomMarkedAsReadEvent(room_id=p.room_id),
+    "user_joined_room": lambda p, m: UserJoinedRoomEvent(room_id=p.room_id),
+    "user_left_room": lambda p, m: UserLeftRoomEvent(room_id=p.room_id),
     "thread_created": lambda p, m: ThreadCreatedEvent(
         room_id=p.room_id, thread_root_event_id=p.thread_root_event_id
     ),
-    "server_updated": lambda p, m: ServerUpdatedEvent(
-        name=p.name, description=p.description, logo_url=p.logo_url, banner_url=p.banner_url
+    "thread_viewer_state_changed": lambda p, m: ThreadViewerStateChangedEvent(
+        room_id=p.room_id,
+        thread_root_event_id=p.thread_root_event_id,
+        is_following=p.is_following,
     ),
-    "user_profile_updated": lambda p, m: UserProfileUpdatedEvent(
-        user_id=p.user_id, login=p.login, display_name=p.display_name, avatar_url=p.avatar_url
+    "room_read_state_changed": lambda p, m: RoomReadStateChangedEvent(
+        room_id=p.room_id
     ),
-    "user_custom_status_set": lambda p, m: UserCustomStatusSetEvent(
+    "room_layout_changed": lambda p, m: RoomLayoutChangedEvent(),
+    "server_motd_changed": lambda p, m: ServerMotdChangedEvent(motd=p.motd),
+    "server_profile_changed": lambda p, m: ServerProfileChangedEvent(),
+    "user_account_created": lambda p, m: UserCreatedEvent(user_id=p.user_id),
+    "user_profile_changed": lambda p, m: UserProfileUpdatedEvent(
         user_id=p.user_id,
-        emoji=p.emoji,
-        text=p.text,
-        expires_at=format_cursor(p.expires_at) if p.expires_at else None,
+        login=None,
+        display_name=None,
+        avatar_url=None,
     ),
-    "user_custom_status_cleared": lambda p, m: UserCustomStatusClearedEvent(user_id=p.user_id),
-    "server_user_preferences_updated": lambda p, m: ServerUserPreferencesUpdatedEvent(
-        timezone=p.timezone, time_format=str(p.time_format)
+    "user_account_deleted": lambda p, m: UserDeletedEvent(user_id=p.user_id),
+    "viewer_preferences_changed": lambda p, m: ViewerPreferencesChangedEvent(),
+    "viewer_permissions_changed": lambda p, m: ViewerPermissionsChangedEvent(),
+    "viewer_presence_preference_changed": lambda p, m: ViewerPresencePreferenceChangedEvent(),
+    "notification_occurrences_changed": lambda p, m: NotificationOccurrencesChangedEvent(
+        created_notification_id=p.created_notification_id or None
     ),
-    "room_groups_updated": lambda p, m: RoomGroupsUpdatedEvent(changed=p.changed),
-    "server_member_deleted": lambda p, m: ServerMemberDeletedEvent(user_id=p.user_id),
+    "notification_unread_state_changed": lambda p, m: NotificationUnreadStateChangedEvent(
+        room_id=p.room_id, thread_root_event_id=p.thread_root_event_id
+    ),
+    "role_created": lambda p, m: RoleCreatedEvent(role_name=p.role_name),
+    "role_updated": lambda p, m: RoleUpdatedEvent(role_name=p.role_name),
+    "role_deleted": lambda p, m: RoleDeletedEvent(role_name=p.role_name),
+    "roles_reordered": lambda p, m: RolesReorderedEvent(role_names=list(p.role_names)),
+    "role_assigned": lambda p, m: RoleAssignedEvent(
+        user_id=p.user_id, role_name=p.role_name
+    ),
+    "role_revoked": lambda p, m: RoleRevokedEvent(
+        user_id=p.user_id, role_name=p.role_name
+    ),
+    "role_permissions_changed": lambda p, m: RolePermissionsChangedEvent(
+        role_name=p.role_name
+    ),
     "asset_processing_started": lambda p, m: AssetProcessingStartedEvent(
         asset_id=p.asset_id, room_id=p.room_id, message_event_id=p.message_event_id
     ),
@@ -968,43 +1178,29 @@ _EVENT_BUILDERS: dict[str, Any] = {
         asset_id=p.asset_id, room_id=p.room_id, message_event_id=p.message_event_id
     ),
     "asset_deleted": lambda p, m: AssetDeletedEvent(asset_id=p.asset_id, room_id=p.room_id),
-    "call_started": lambda p, m: CallStartedEvent(
-        room_id=p.room_id, call_id=p.call_id, source=str(p.source)
+    "voice_call_started": lambda p, m: CallStartedEvent(
+        room_id=p.room_id, call_id=p.call_id, source=getattr(p, "source", "")
     ),
-    "call_participant_joined": lambda p, m: CallParticipantJoinedEvent(
-        room_id=p.room_id, call_id=p.call_id, source=str(p.source)
+    "voice_call_participant_joined": lambda p, m: CallParticipantJoinedEvent(
+        room_id=p.room_id, call_id=p.call_id, source=getattr(p, "source", "")
     ),
-    "call_participant_left": lambda p, m: CallParticipantLeftEvent(
-        room_id=p.room_id, call_id=p.call_id, source=str(p.source)
+    "voice_call_participant_left": lambda p, m: CallParticipantLeftEvent(
+        room_id=p.room_id, call_id=p.call_id, source=getattr(p, "source", "")
     ),
-    "call_ended": lambda p, m: CallEndedEvent(
-        room_id=p.room_id, call_id=p.call_id, source=str(p.source)
+    "voice_call_ended": lambda p, m: CallEndedEvent(
+        room_id=p.room_id, call_id=p.call_id, source=getattr(p, "source", "")
     ),
-    "mention_notification": lambda p, m: MentionNotificationEvent(
-        room_id=p.room_id,
-        actor_user_id=p.actor_user_id,
-        room_name=p.room_name,
-        actor_display_name=p.actor_display_name,
-    ),
-    "new_direct_message_notification": lambda p, m: NewDirectMessageNotificationEvent(
-        room_id=p.room_id,
-        sender_id=p.sender_id,
-        sender_display_name=p.sender_display_name,
-        sender_avatar_url=p.sender_avatar_url,
-        conversation_name=p.conversation_name,
-    ),
-    "session_terminated": lambda p, m: SessionTerminatedEvent(reason=p.reason),
 }
 
 
-def event_name(envelope: RealtimeEventEnvelope) -> str:
-    """Get the public snake_case handler name for a realtime event envelope.
+def event_name(envelope: RealtimeEvent) -> str:
+    """Get the public snake_case handler name for a realtime event.
 
     This is the name bot authors pass to ``@on_event(...)``: almost always
-    the oneof case name verbatim, except for the three renames in
-    ``_ONEOF_RENAMES`` kept for GraphQL-era compatibility. Returns
-    ``"unknown"`` if the envelope carries no event (oneof unset) or an
-    oneof case this module doesn't model yet.
+    the oneof case name verbatim, except for the renames in
+    ``_ONEOF_RENAMES`` kept for compatibility. Returns ``"unknown"`` if the
+    event carries no payload (oneof unset) or an oneof case this module
+    doesn't model yet.
     """
     oneof = envelope.event
     if oneof is None:
@@ -1016,11 +1212,11 @@ def event_name(envelope: RealtimeEventEnvelope) -> str:
 
 
 def parse_envelope(
-    envelope: RealtimeEventEnvelope,
+    envelope: RealtimeEvent,
     message: _ProtoMessage | None = None,
     actor: _ProtoUser | None = None,
 ) -> RoomEvent:
-    """Adapt a realtime envelope (plus anything hydrate.py fetched) to a RoomEvent.
+    """Adapt a realtime event (plus anything hydrate.py fetched) to a RoomEvent.
 
     ``message`` is the hydrated ``Message`` proto for ``message_posted``
     (ignored for every other event type). ``actor`` is the hydrated ``User``
@@ -1035,6 +1231,11 @@ def parse_envelope(
     else:
         logger.warning("Unmodeled realtime event oneof case: %s", field_name)
         inner = UnknownEvent(typename=field_name or "", raw={})
+
+    if isinstance(inner, PresenceChangedEvent) and not inner.user_id:
+        # presence_changed no longer carries a user ID; the actor is the
+        # affected user.
+        inner.user_id = envelope.actor_id or ""
 
     return RoomEvent(
         actor_id=envelope.actor_id or "",

@@ -24,6 +24,7 @@ from chatto_bot._pb.chatto.api.v1.room_timeline_pb import (
 )
 from chatto_bot._pb.chatto.api.v1.rooms_pb import Room, RoomKind
 from chatto_bot._pb.chatto.api.v1.users_pb import User as ProtoUser
+from chatto_bot._pb.chatto.realtime.v1 import events_pb as ev
 from chatto_bot._pb.chatto.realtime.v1 import realtime_pb as rt
 from chatto_bot.client import Unauthenticated
 from chatto_bot.command import Command
@@ -32,8 +33,8 @@ from chatto_bot.hydrate import HydratedEvent
 from chatto_bot.types import User
 
 
-def _envelope(field: str, payload, *, actor_id: str = "U1") -> rt.RealtimeEventEnvelope:
-    return rt.RealtimeEventEnvelope(
+def _envelope(field: str, payload, *, actor_id: str = "U1") -> rt.RealtimeEvent:
+    return rt.RealtimeEvent(
         id="E1",
         actor_id=actor_id,
         created_at=Timestamp.from_datetime(
@@ -116,7 +117,7 @@ class TestWillDispatch:
 class TestOnEnvelope:
     @pytest.mark.asyncio
     async def test_skips_hydration_when_nothing_is_registered(self, bot):
-        env = _envelope("room_archived", rt.RealtimeRoomEvent(room_id="R1"))
+        env = _envelope("room_archived", ev.RoomArchivedEvent(room_id="R1"))
         await bot._on_envelope(env)
         bot.hydrator.hydrate.assert_not_called()
 
@@ -129,7 +130,7 @@ class TestOnEnvelope:
             called = True
 
         bot._event_handlers.append(EventHandler(event_type="room_archived", callback=handler))
-        env = _envelope("room_archived", rt.RealtimeRoomEvent(room_id="R1"))
+        env = _envelope("room_archived", ev.RoomArchivedEvent(room_id="R1"))
         bot.hydrator.hydrate = AsyncMock(
             return_value=HydratedEvent(envelope=env, event_name="room_archived")
         )
@@ -150,7 +151,7 @@ class TestOnEnvelope:
             called = True
 
         bot._event_handlers.append(EventHandler(event_type="message_posted", callback=handler))
-        env = _envelope("message_posted", rt.RealtimeMessagePostedEvent(room_id="R1", message_event_id="E1"))
+        env = _envelope("message_posted", ev.MessagePostedEvent(room_id="R1"))
         bot.hydrator.hydrate = AsyncMock(return_value=None)
 
         await bot._on_envelope(env)
@@ -161,7 +162,7 @@ class TestOnEnvelope:
 class TestInvalidations:
     @pytest.mark.asyncio
     async def test_user_profile_updated_invalidates_user_cache(self, bot):
-        env = _envelope("user_profile_updated", rt.RealtimeUserProfileUpdatedEvent(user_id="U1", login="alice"))
+        env = _envelope("user_profile_changed", ev.UserProfileChangedEvent(user_id="U1"))
         bot.hydrator.hydrate = AsyncMock(
             return_value=HydratedEvent(envelope=env, event_name="user_profile_updated")
         )
@@ -175,7 +176,8 @@ class TestInvalidations:
 
     @pytest.mark.asyncio
     async def test_presence_changed_invalidates_user_cache(self, bot):
-        env = _envelope("presence_changed", rt.RealtimePresenceChangedEvent(user_id="U2", status=1))
+        # presence_changed carries no user ID; the affected user is the actor.
+        env = _envelope("presence_changed", ev.PresenceChangedEvent(), actor_id="U2")
         bot.hydrator.hydrate = AsyncMock(
             return_value=HydratedEvent(envelope=env, event_name="presence_changed")
         )
@@ -194,7 +196,7 @@ class TestInvalidations:
         Context, so a later ctx.is_dm read isn't stale."""
         bot._room_kinds["R1"] = True  # stale entry
         bot._event_handlers.append(EventHandler(event_type="room_created", callback=AsyncMock()))
-        env = _envelope("room_created", rt.RealtimeRoomEvent(room_id="R1"))
+        env = _envelope("room_created", ev.RoomCreatedEvent(room_id="R1"))
         bot.hydrator.hydrate = AsyncMock(
             return_value=HydratedEvent(envelope=env, event_name="room_created")
         )
@@ -833,9 +835,7 @@ class TestOnEnvelopeUnauthenticated:
         from connectrpc.code import Code
 
         bot.add_command(Command(name="ping", callback=AsyncMock()))
-        env = _envelope(
-            "message_posted", rt.RealtimeMessagePostedEvent(room_id="R1", message_event_id="E1")
-        )
+        env = _envelope("message_posted", ev.MessagePostedEvent(room_id="R1"))
         bot.hydrator.hydrate = AsyncMock(
             side_effect=Unauthenticated(Code.UNAUTHENTICATED, "token revoked")
         )
