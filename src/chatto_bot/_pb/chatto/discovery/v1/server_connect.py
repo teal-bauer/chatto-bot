@@ -16,7 +16,7 @@ from connectrpc.server import ConnectASGIApplication, ConnectWSGIApplication, DE
 from protobuf import DescService
 
 from . import server_pb
-from .server_pb import GetServerRequest, GetServerResponse, ListNeighborsRequest, ListNeighborsResponse
+from .server_pb import GetServerRequest, GetServerResponse, ListNeighborhoodServersRequest, ListNeighborhoodServersResponse, ListNeighborsRequest, ListNeighborsResponse
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Iterable, Mapping
@@ -42,6 +42,17 @@ class ServerDiscoveryService(Protocol):
     async def list_neighbors(self, request: ListNeighborsRequest, ctx: RequestContext[ListNeighborsRequest, ListNeighborsResponse], /) -> ListNeighborsResponse:
         """
         Returns the public Neighbor directory without requiring a session.
+        """
+        raise ConnectError(Code.UNIMPLEMENTED, 'Not implemented')
+
+    async def list_neighborhood_servers(self, request: ListNeighborhoodServersRequest, ctx: RequestContext[ListNeighborhoodServersRequest, ListNeighborhoodServersResponse], /) -> ListNeighborhoodServersResponse:
+        """
+        Returns the Neighborhood without requiring a session. The server
+        contacts other servers in the background and caches the result. A call
+        does not contact other servers, so a client can show the Neighborhood
+        without revealing the user's network address to those servers. The
+        server refreshes the Neighborhood at least once per hour and soon after
+        its Neighbors change.
         """
         raise ConnectError(Code.UNIMPLEMENTED, 'Not implemented')
 
@@ -82,6 +93,16 @@ class ServerDiscoveryServiceASGIApplication(ConnectASGIApplication[ServerDiscove
                         idempotency_level=IdempotencyLevel.NO_SIDE_EFFECTS,
                     ),
                     function=svc.list_neighbors,
+                ),
+                "/chatto.discovery.v1.ServerDiscoveryService/ListNeighborhoodServers": Endpoint.unary(
+                    method=MethodInfo(
+                        name="ListNeighborhoodServers",
+                        service_name="chatto.discovery.v1.ServerDiscoveryService",
+                        input=ListNeighborhoodServersRequest,
+                        output=ListNeighborhoodServersResponse,
+                        idempotency_level=IdempotencyLevel.NO_SIDE_EFFECTS,
+                    ),
+                    function=svc.list_neighborhood_servers,
                 ),
             },
             interceptors=interceptors,
@@ -152,6 +173,36 @@ class ServerDiscoveryServiceClient(ConnectClient):
             use_get=use_get,
         )
 
+    async def list_neighborhood_servers(
+        self,
+        request: ListNeighborhoodServersRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None, 
+        timeout_ms: int | None = None,
+        use_get: bool = False,
+    ) -> ListNeighborhoodServersResponse:
+        """
+        Returns the Neighborhood without requiring a session. The server
+        contacts other servers in the background and caches the result. A call
+        does not contact other servers, so a client can show the Neighborhood
+        without revealing the user's network address to those servers. The
+        server refreshes the Neighborhood at least once per hour and soon after
+        its Neighbors change.
+        """
+        return await self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="ListNeighborhoodServers",
+                service_name="chatto.discovery.v1.ServerDiscoveryService",
+                input=ListNeighborhoodServersRequest,
+                output=ListNeighborhoodServersResponse,
+                idempotency_level=IdempotencyLevel.NO_SIDE_EFFECTS,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+            use_get=use_get,
+        )
+
 class ServerDiscoveryServiceSync(Protocol):
     """
     Provides unauthenticated server discovery metadata.
@@ -167,6 +218,17 @@ class ServerDiscoveryServiceSync(Protocol):
     def list_neighbors(self, request: ListNeighborsRequest, ctx: RequestContext[ListNeighborsRequest, ListNeighborsResponse], /) -> ListNeighborsResponse:
         """
         Returns the public Neighbor directory without requiring a session.
+        """
+        raise ConnectError(Code.UNIMPLEMENTED, 'Not implemented')
+
+    def list_neighborhood_servers(self, request: ListNeighborhoodServersRequest, ctx: RequestContext[ListNeighborhoodServersRequest, ListNeighborhoodServersResponse], /) -> ListNeighborhoodServersResponse:
+        """
+        Returns the Neighborhood without requiring a session. The server
+        contacts other servers in the background and caches the result. A call
+        does not contact other servers, so a client can show the Neighborhood
+        without revealing the user's network address to those servers. The
+        server refreshes the Neighborhood at least once per hour and soon after
+        its Neighbors change.
         """
         raise ConnectError(Code.UNIMPLEMENTED, 'Not implemented')
 
@@ -205,6 +267,16 @@ class ServerDiscoveryServiceWSGIApplication(ConnectWSGIApplication):
                         idempotency_level=IdempotencyLevel.NO_SIDE_EFFECTS,
                     ),
                     function=service.list_neighbors,
+                ),
+                "/chatto.discovery.v1.ServerDiscoveryService/ListNeighborhoodServers": EndpointSync.unary(
+                    method=MethodInfo(
+                        name="ListNeighborhoodServers",
+                        service_name="chatto.discovery.v1.ServerDiscoveryService",
+                        input=ListNeighborhoodServersRequest,
+                        output=ListNeighborhoodServersResponse,
+                        idempotency_level=IdempotencyLevel.NO_SIDE_EFFECTS,
+                    ),
+                    function=service.list_neighborhood_servers,
                 ),
             },
             interceptors=interceptors,
@@ -267,6 +339,35 @@ class ServerDiscoveryServiceClientSync(ConnectClientSync):
                 service_name="chatto.discovery.v1.ServerDiscoveryService",
                 input=ListNeighborsRequest,
                 output=ListNeighborsResponse,
+                idempotency_level=IdempotencyLevel.NO_SIDE_EFFECTS,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+            use_get=use_get,
+        )
+    def list_neighborhood_servers(
+        self,
+        request: ListNeighborhoodServersRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None, 
+        timeout_ms: int | None = None,
+        use_get: bool = False,
+    ) -> ListNeighborhoodServersResponse:
+        """
+        Returns the Neighborhood without requiring a session. The server
+        contacts other servers in the background and caches the result. A call
+        does not contact other servers, so a client can show the Neighborhood
+        without revealing the user's network address to those servers. The
+        server refreshes the Neighborhood at least once per hour and soon after
+        its Neighbors change.
+        """
+        return self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="ListNeighborhoodServers",
+                service_name="chatto.discovery.v1.ServerDiscoveryService",
+                input=ListNeighborhoodServersRequest,
+                output=ListNeighborhoodServersResponse,
                 idempotency_level=IdempotencyLevel.NO_SIDE_EFFECTS,
             ),
             headers=headers,

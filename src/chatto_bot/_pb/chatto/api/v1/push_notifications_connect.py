@@ -37,6 +37,11 @@ class PushNotificationService(Protocol):
 
         The server must have Web Push configured. Clients normally call this after
         the browser grants notification permission and returns a PushSubscription.
+        A stored subscription expires 180 days after its most recent save. The
+        client owns the refresh: call Subscribe again when the app starts and at
+        least once a day while it runs, and when the browser replaces the
+        PushSubscription. The server removes expired records itself. Call
+        Unsubscribe to stop delivery before the subscription expires.
         """
         raise ConnectError(Code.UNIMPLEMENTED, 'Not implemented')
 
@@ -133,6 +138,11 @@ class PushNotificationServiceClient(ConnectClient):
 
         The server must have Web Push configured. Clients normally call this after
         the browser grants notification permission and returns a PushSubscription.
+        A stored subscription expires 180 days after its most recent save. The
+        client owns the refresh: call Subscribe again when the app starts and at
+        least once a day while it runs, and when the browser replaces the
+        PushSubscription. The server removes expired records itself. Call
+        Unsubscribe to stop delivery before the subscription expires.
         """
         return await self.execute_unary(
             request=request,
@@ -207,6 +217,11 @@ class PushNotificationServiceSync(Protocol):
 
         The server must have Web Push configured. Clients normally call this after
         the browser grants notification permission and returns a PushSubscription.
+        A stored subscription expires 180 days after its most recent save. The
+        client owns the refresh: call Subscribe again when the app starts and at
+        least once a day while it runs, and when the browser replaces the
+        PushSubscription. The server removes expired records itself. Call
+        Unsubscribe to stop delivery before the subscription expires.
         """
         raise ConnectError(Code.UNIMPLEMENTED, 'Not implemented')
 
@@ -301,6 +316,11 @@ class PushNotificationServiceClientSync(ConnectClientSync):
 
         The server must have Web Push configured. Clients normally call this after
         the browser grants notification permission and returns a PushSubscription.
+        A stored subscription expires 180 days after its most recent save. The
+        client owns the refresh: call Subscribe again when the app starts and at
+        least once a day while it runs, and when the browser replaces the
+        PushSubscription. The server removes expired records itself. Call
+        Unsubscribe to stop delivery before the subscription expires.
         """
         return self.execute_unary(
             request=request,

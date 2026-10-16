@@ -10,11 +10,13 @@ from typing import Literal, NoReturn, TYPE_CHECKING, TypeAlias
 
 from protobuf import Message
 from protobuf._codegen import file_desc
+from protobuf.wkt import timestamp_pb
 
 from ...api.v1 import server_pb
 
 if TYPE_CHECKING:
     from protobuf import DescFile
+    from protobuf.wkt import Timestamp
 
     from ...api.v1.server_pb import ServerLogin, ServerPublicProfile
 
@@ -140,17 +142,144 @@ class ListNeighborsResponse(Message[_ListNeighborsResponseFields]):
 
         origins: list[str]
 
+_ListNeighborhoodServersRequestFields: TypeAlias = NoReturn
+
+class ListNeighborhoodServersRequest(Message[_ListNeighborhoodServersRequestFields]):
+    """
+    Request for the Neighborhood that this server has discovered.
+
+    ```proto
+    message chatto.discovery.v1.ListNeighborhoodServersRequest
+    ```
+    """
+
+    __slots__ = ()
+
+    if TYPE_CHECKING:
+
+        def __init__(
+            self,
+        ) -> None:
+            pass
+
+_NeighborhoodServerFields: TypeAlias = Literal["origin", "profile", "direct_neighbor", "recommended_by_origins"]
+
+class NeighborhoodServer(Message[_NeighborhoodServerFields]):
+    """
+    One server in the Neighborhood of the called server.
+
+    ```proto
+    message chatto.discovery.v1.NeighborhoodServer
+    ```
+
+    Attributes:
+        origin:
+            Canonical origin of the server.
+
+            ```proto
+            string origin = 1;
+            ```
+        profile:
+            Public profile that the called server loaded. The welcome message is
+            absent. The logo and banner URLs are server-relative paths of copies on
+            the called server. Resolve them against the origin of the called server.
+
+            ```proto
+            optional chatto.api.v1.ServerPublicProfile profile = 2;
+            ```
+        direct_neighbor:
+            Whether the called server advertises this server as a Neighbor.
+
+            ```proto
+            bool direct_neighbor = 3;
+            ```
+        recommended_by_origins:
+            Canonical origins of other servers in the same response that mutually
+            recommend this server. The list does not include the called server.
+
+            ```proto
+            repeated string recommended_by_origins = 4;
+            ```
+    """
+
+    __slots__ = ("origin", "profile", "direct_neighbor", "recommended_by_origins")
+
+    if TYPE_CHECKING:
+
+        def __init__(
+            self,
+            *,
+            origin: str = "",
+            profile: ServerPublicProfile | None = None,
+            direct_neighbor: bool = False,
+            recommended_by_origins: list[str] | None = None,
+        ) -> None:
+            pass
+
+        origin: str
+        profile: ServerPublicProfile | None
+        direct_neighbor: bool
+        recommended_by_origins: list[str]
+
+_ListNeighborhoodServersResponseFields: TypeAlias = Literal["servers", "refreshed_at"]
+
+class ListNeighborhoodServersResponse(Message[_ListNeighborhoodServersResponseFields]):
+    """
+    Servers that the called server discovered through its Neighbors. The
+    called server lists each of its Neighbors whose public profile loaded. It
+    also lists servers that a mutually advertising Neighbor recommends when the
+    recommendation is also mutual. The response has no ordering contract.
+
+    ```proto
+    message chatto.discovery.v1.ListNeighborhoodServersResponse
+    ```
+
+    Attributes:
+        servers:
+            Servers in the Neighborhood.
+
+            ```proto
+            repeated chatto.discovery.v1.NeighborhoodServer servers = 1;
+            ```
+        refreshed_at:
+            Time when the called server last completed Neighborhood discovery.
+            Absent before the first completed discovery.
+
+            ```proto
+            optional google.protobuf.Timestamp refreshed_at = 2;
+            ```
+    """
+
+    __slots__ = ("servers", "refreshed_at")
+
+    if TYPE_CHECKING:
+
+        def __init__(
+            self,
+            *,
+            servers: list[NeighborhoodServer] | None = None,
+            refreshed_at: Timestamp | None = None,
+        ) -> None:
+            pass
+
+        servers: list[NeighborhoodServer]
+        refreshed_at: Timestamp | None
+
 
 _DESC = file_desc(
-    b'\n chatto/discovery/v1/server.proto\x12\x13chatto.discovery.v1\x1a\x1achatto/api/v1/server.proto"\x12\n\x10GetServerRequest"\xaa\x01\n\x11GetServerResponse\x12<\n\x07profile\x18\x01 \x01(\x0b2".chatto.api.v1.ServerPublicProfileR\x07profile\x120\n\x05login\x18\x02 \x01(\x0b2\x1a.chatto.api.v1.ServerLoginR\x05login\x12%\n\x0esetup_required\x18\x03 \x01(\x08R\rsetupRequired"\x16\n\x14ListNeighborsRequest"B\n\x15ListNeighborsResponse\x12\x18\n\x07origins\x18\x01 \x03(\tR\x07originsJ\x04\x08\x02\x10\x03R\tneighbors2\xe6\x01\n\x16ServerDiscoveryService\x12_\n\tGetServer\x12%.chatto.discovery.v1.GetServerRequest\x1a&.chatto.discovery.v1.GetServerResponse"\x03\x90\x02\x01\x12k\n\rListNeighbors\x12).chatto.discovery.v1.ListNeighborsRequest\x1a*.chatto.discovery.v1.ListNeighborsResponse"\x03\x90\x02\x01B\x94\x01\n\x17com.chatto.discovery.v1B\x0bServerProtoP\x01\xa2\x02\x03CDX\xaa\x02\x13Chatto.Discovery.V1\xca\x02\x13Chatto\\Discovery\\V1\xe2\x02\x1fChatto\\Discovery\\V1\\GPBMetadata\xea\x02\x15Chatto::Discovery::V1b\x06proto3',
+    b'\n chatto/discovery/v1/server.proto\x12\x13chatto.discovery.v1\x1a\x1achatto/api/v1/server.proto\x1a\x1fgoogle/protobuf/timestamp.proto"\x12\n\x10GetServerRequest"\xaa\x01\n\x11GetServerResponse\x12<\n\x07profile\x18\x01 \x01(\x0b2".chatto.api.v1.ServerPublicProfileR\x07profile\x120\n\x05login\x18\x02 \x01(\x0b2\x1a.chatto.api.v1.ServerLoginR\x05login\x12%\n\x0esetup_required\x18\x03 \x01(\x08R\rsetupRequired"\x16\n\x14ListNeighborsRequest"B\n\x15ListNeighborsResponse\x12\x18\n\x07origins\x18\x01 \x03(\tR\x07originsJ\x04\x08\x02\x10\x03R\tneighbors" \n\x1eListNeighborhoodServersRequest"\xc9\x01\n\x12NeighborhoodServer\x12\x16\n\x06origin\x18\x01 \x01(\tR\x06origin\x12<\n\x07profile\x18\x02 \x01(\x0b2".chatto.api.v1.ServerPublicProfileR\x07profile\x12\'\n\x0fdirect_neighbor\x18\x03 \x01(\x08R\x0edirectNeighbor\x124\n\x16recommended_by_origins\x18\x04 \x03(\tR\x14recommendedByOrigins"\xa3\x01\n\x1fListNeighborhoodServersResponse\x12A\n\x07servers\x18\x01 \x03(\x0b2\'.chatto.discovery.v1.NeighborhoodServerR\x07servers\x12=\n\x0crefreshed_at\x18\x02 \x01(\x0b2\x1a.google.protobuf.TimestampR\x0brefreshedAt2\xf2\x02\n\x16ServerDiscoveryService\x12_\n\tGetServer\x12%.chatto.discovery.v1.GetServerRequest\x1a&.chatto.discovery.v1.GetServerResponse"\x03\x90\x02\x01\x12k\n\rListNeighbors\x12).chatto.discovery.v1.ListNeighborsRequest\x1a*.chatto.discovery.v1.ListNeighborsResponse"\x03\x90\x02\x01\x12\x89\x01\n\x17ListNeighborhoodServers\x123.chatto.discovery.v1.ListNeighborhoodServersRequest\x1a4.chatto.discovery.v1.ListNeighborhoodServersResponse"\x03\x90\x02\x01B\x94\x01\n\x17com.chatto.discovery.v1B\x0bServerProtoP\x01\xa2\x02\x03CDX\xaa\x02\x13Chatto.Discovery.V1\xca\x02\x13Chatto\\Discovery\\V1\xe2\x02\x1fChatto\\Discovery\\V1\\GPBMetadata\xea\x02\x15Chatto::Discovery::V1b\x06proto3',
     [
         server_pb.desc(),
+        timestamp_pb.desc(),
     ],
     {
         "GetServerRequest": GetServerRequest,
         "GetServerResponse": GetServerResponse,
         "ListNeighborsRequest": ListNeighborsRequest,
         "ListNeighborsResponse": ListNeighborsResponse,
+        "ListNeighborhoodServersRequest": ListNeighborhoodServersRequest,
+        "NeighborhoodServer": NeighborhoodServer,
+        "ListNeighborhoodServersResponse": ListNeighborhoodServersResponse,
     },
 )
 

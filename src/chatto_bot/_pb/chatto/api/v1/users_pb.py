@@ -107,7 +107,7 @@ class User(Message[_UserFields]):
             optional chatto.api.v1.CustomUserStatus custom_status = 7;
             ```
         bio:
-            Short self-authored biography shown on the user's profile, when set.
+            Short Markdown biography shown on the user's profile, when set.
 
             ```proto
             optional string bio = 9;

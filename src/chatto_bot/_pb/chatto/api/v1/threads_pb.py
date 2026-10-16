@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Literal, TYPE_CHECKING, TypeAlias
 
-from protobuf import Message
+from protobuf import Enum, Message
 from protobuf._codegen import file_desc
 
 from . import message_types_pb, pagination_pb, read_state_pb, room_timeline_pb, rooms_pb
@@ -280,7 +280,7 @@ class FollowedThread(Message[_FollowedThreadFields]):
         latest_reply: Message_ | None
         direct_message_participant_user_ids: list[str]
 
-_ListFollowedThreadsRequestFields: TypeAlias = Literal["page", "include_direct_message_threads"]
+_ListFollowedThreadsRequestFields: TypeAlias = Literal["page", "include_direct_message_threads", "unread_only", "root_author_filter"]
 
 class ListFollowedThreadsRequest(Message[_ListFollowedThreadsRequestFields]):
     """
@@ -304,9 +304,24 @@ class ListFollowedThreadsRequest(Message[_ListFollowedThreadsRequestFields]):
             ```proto
             bool include_direct_message_threads = 4;
             ```
+        unread_only:
+            Return only threads with replies that the viewer has not read. The page
+            total then counts only these threads. Older servers ignore this field and
+            return all followed threads.
+
+            ```proto
+            bool unread_only = 5;
+            ```
+        root_author_filter:
+            Filter root authors before pagination and total counts. Threads whose
+            root author is unavailable are omitted when a filter is selected.
+
+            ```proto
+            chatto.api.v1.ThreadRootAuthorFilter root_author_filter = 6;
+            ```
     """
 
-    __slots__ = ("page", "include_direct_message_threads")
+    __slots__ = ("page", "include_direct_message_threads", "unread_only", "root_author_filter")
 
     if TYPE_CHECKING:
 
@@ -315,11 +330,15 @@ class ListFollowedThreadsRequest(Message[_ListFollowedThreadsRequestFields]):
             *,
             page: PageRequest | None = None,
             include_direct_message_threads: bool = False,
+            unread_only: bool = False,
+            root_author_filter: ThreadRootAuthorFilter | None = None,
         ) -> None:
             pass
 
         page: PageRequest | None
         include_direct_message_threads: bool
+        unread_only: bool
+        root_author_filter: ThreadRootAuthorFilter
 
 _ListFollowedThreadsResponseFields: TypeAlias = Literal["threads", "includes", "page"]
 
@@ -458,9 +477,42 @@ class ListThreadParticipantsResponse(Message[_ListThreadParticipantsResponseFiel
         user_ids: list[str]
         page: PageInfo | None
 
+class ThreadRootAuthorFilter(Enum):
+    """
+    Selects threads by the author of their root message, not their replies.
+
+    ```proto
+    enum chatto.api.v1.ThreadRootAuthorFilter
+    ```
+
+    Attributes:
+        UNSPECIFIED:
+            Include all root authors.
+
+            ```proto
+            THREAD_ROOT_AUTHOR_FILTER_UNSPECIFIED = 0
+            ```
+        VIEWER:
+            Include only roots authored by the authenticated viewer.
+
+            ```proto
+            THREAD_ROOT_AUTHOR_FILTER_VIEWER = 1
+            ```
+        OTHERS:
+            Include only roots authored by other users.
+
+            ```proto
+            THREAD_ROOT_AUTHOR_FILTER_OTHERS = 2
+            ```
+    """
+
+    UNSPECIFIED = 0
+    VIEWER = 1
+    OTHERS = 2
+
 
 _DESC = file_desc(
-    b'\n\x1bchatto/api/v1/threads.proto\x12\rchatto.api.v1\x1a\x1bbuf/validate/validate.proto\x1a!chatto/api/v1/message_types.proto\x1a\x1echatto/api/v1/pagination.proto\x1a\x1echatto/api/v1/read_state.proto\x1a!chatto/api/v1/room_timeline.proto\x1a\x19chatto/api/v1/rooms.proto"{\n\x11ThreadFollowState\x12\x17\n\x07room_id\x18\x01 \x01(\tR\x06roomId\x12/\n\x14thread_root_event_id\x18\x02 \x01(\tR\x11threadRootEventId\x12\x1c\n\tfollowing\x18\x03 \x01(\x08R\tfollowing"q\n\x13FollowThreadRequest\x12 \n\x07room_id\x18\x01 \x01(\tR\x06roomIdB\x07\xbaH\x04r\x02\x10\x01\x128\n\x14thread_root_event_id\x18\x02 \x01(\tR\x11threadRootEventIdB\x07\xbaH\x04r\x02\x10\x01"_\n\x14FollowThreadResponse\x126\n\x05state\x18\x02 \x01(\x0b2 .chatto.api.v1.ThreadFollowStateR\x05stateJ\x04\x08\x01\x10\x02R\tfollowing"s\n\x15UnfollowThreadRequest\x12 \n\x07room_id\x18\x01 \x01(\tR\x06roomIdB\x07\xbaH\x04r\x02\x10\x01\x128\n\x14thread_root_event_id\x18\x02 \x01(\tR\x11threadRootEventIdB\x07\xbaH\x04r\x02\x10\x01"a\n\x16UnfollowThreadResponse\x126\n\x05state\x18\x02 \x01(\x0b2 .chatto.api.v1.ThreadFollowStateR\x05stateJ\x04\x08\x01\x10\x02R\tfollowing"\x98\x03\n\x0eFollowedThread\x129\n\x0croot_message\x18\x04 \x01(\x0b2\x16.chatto.api.v1.MessageR\x0brootMessage\x12.\n\x04room\x18\x08 \x01(\x0b2\x1a.chatto.api.v1.RoomSummaryR\x04room\x124\n\x06thread\x18\t \x01(\x0b2\x1c.chatto.api.v1.ThreadSummaryR\x06thread\x129\n\x0clatest_reply\x18\n \x01(\x0b2\x16.chatto.api.v1.MessageR\x0blatestReply\x12L\n#direct_message_participant_user_ids\x18\x0b \x03(\tR\x1fdirectMessageParticipantUserIdsJ\x04\x08\x01\x10\x04J\x04\x08\x05\x10\x08R\x07room_idR\troom_nameR\x14thread_root_event_idR\x0breply_countR\rlast_reply_atR\nhas_unread"\xac\x01\n\x1aListFollowedThreadsRequest\x12.\n\x04page\x18\x03 \x01(\x0b2\x1a.chatto.api.v1.PageRequestR\x04page\x12C\n\x1einclude_direct_message_threads\x18\x04 \x01(\x08R\x1bincludeDirectMessageThreadsJ\x04\x08\x01\x10\x02J\x04\x08\x02\x10\x03R\x05limitR\x06offset"\xe7\x01\n\x1bListFollowedThreadsResponse\x127\n\x07threads\x18\x01 \x03(\x0b2\x1d.chatto.api.v1.FollowedThreadR\x07threads\x12?\n\x08includes\x18\x04 \x01(\x0b2#.chatto.api.v1.RoomTimelineIncludesR\x08includes\x12+\n\x04page\x18\x05 \x01(\x0b2\x17.chatto.api.v1.PageInfoR\x04pageJ\x04\x08\x02\x10\x03J\x04\x08\x03\x10\x04R\x0btotal_countR\x08has_more"\xab\x01\n\x1dListThreadParticipantsRequest\x12 \n\x07room_id\x18\x01 \x01(\tR\x06roomIdB\x07\xbaH\x04r\x02\x10\x01\x128\n\x14thread_root_event_id\x18\x02 \x01(\tR\x11threadRootEventIdB\x07\xbaH\x04r\x02\x10\x01\x12.\n\x04page\x18\x03 \x01(\x0b2\x1a.chatto.api.v1.PageRequestR\x04page"h\n\x1eListThreadParticipantsResponse\x12\x19\n\x08user_ids\x18\x01 \x03(\tR\x07userIds\x12+\n\x04page\x18\x02 \x01(\x0b2\x17.chatto.api.v1.PageInfoR\x04page2\xcf\x07\n\rThreadService\x12i\n\x12GetThreadReadState\x12(.chatto.api.v1.GetThreadReadStateRequest\x1a).chatto.api.v1.GetThreadReadStateResponse\x12{\n\x18BatchGetThreadReadStates\x12..chatto.api.v1.BatchGetThreadReadStatesRequest\x1a/.chatto.api.v1.BatchGetThreadReadStatesResponse\x12u\n\x16ListThreadParticipants\x12,.chatto.api.v1.ListThreadParticipantsRequest\x1a-.chatto.api.v1.ListThreadParticipantsResponse\x12l\n\x13ListFollowedThreads\x12).chatto.api.v1.ListFollowedThreadsRequest\x1a*.chatto.api.v1.ListFollowedThreadsResponse\x12W\n\x0cFollowThread\x12".chatto.api.v1.FollowThreadRequest\x1a#.chatto.api.v1.FollowThreadResponse\x12]\n\x0eUnfollowThread\x12$.chatto.api.v1.UnfollowThreadRequest\x1a%.chatto.api.v1.UnfollowThreadResponse\x12`\n\x0fGetThreadEvents\x12%.chatto.api.v1.GetThreadEventsRequest\x1a&.chatto.api.v1.GetThreadEventsResponse\x12r\n\x15GetThreadEventsAround\x12+.chatto.api.v1.GetThreadEventsAroundRequest\x1a,.chatto.api.v1.GetThreadEventsAroundResponse\x12c\n\x10MarkThreadAsRead\x12&.chatto.api.v1.MarkThreadAsReadRequest\x1a\'.chatto.api.v1.MarkThreadAsReadResponseBw\n\x11com.chatto.api.v1B\x0cThreadsProtoP\x01\xa2\x02\x03CAX\xaa\x02\rChatto.Api.V1\xca\x02\rChatto\\Api\\V1\xe2\x02\x19Chatto\\Api\\V1\\GPBMetadata\xea\x02\x0fChatto::Api::V1b\x06proto3',
+    b'\n\x1bchatto/api/v1/threads.proto\x12\rchatto.api.v1\x1a\x1bbuf/validate/validate.proto\x1a!chatto/api/v1/message_types.proto\x1a\x1echatto/api/v1/pagination.proto\x1a\x1echatto/api/v1/read_state.proto\x1a!chatto/api/v1/room_timeline.proto\x1a\x19chatto/api/v1/rooms.proto"{\n\x11ThreadFollowState\x12\x17\n\x07room_id\x18\x01 \x01(\tR\x06roomId\x12/\n\x14thread_root_event_id\x18\x02 \x01(\tR\x11threadRootEventId\x12\x1c\n\tfollowing\x18\x03 \x01(\x08R\tfollowing"q\n\x13FollowThreadRequest\x12 \n\x07room_id\x18\x01 \x01(\tR\x06roomIdB\x07\xbaH\x04r\x02\x10\x01\x128\n\x14thread_root_event_id\x18\x02 \x01(\tR\x11threadRootEventIdB\x07\xbaH\x04r\x02\x10\x01"_\n\x14FollowThreadResponse\x126\n\x05state\x18\x02 \x01(\x0b2 .chatto.api.v1.ThreadFollowStateR\x05stateJ\x04\x08\x01\x10\x02R\tfollowing"s\n\x15UnfollowThreadRequest\x12 \n\x07room_id\x18\x01 \x01(\tR\x06roomIdB\x07\xbaH\x04r\x02\x10\x01\x128\n\x14thread_root_event_id\x18\x02 \x01(\tR\x11threadRootEventIdB\x07\xbaH\x04r\x02\x10\x01"a\n\x16UnfollowThreadResponse\x126\n\x05state\x18\x02 \x01(\x0b2 .chatto.api.v1.ThreadFollowStateR\x05stateJ\x04\x08\x01\x10\x02R\tfollowing"\x98\x03\n\x0eFollowedThread\x129\n\x0croot_message\x18\x04 \x01(\x0b2\x16.chatto.api.v1.MessageR\x0brootMessage\x12.\n\x04room\x18\x08 \x01(\x0b2\x1a.chatto.api.v1.RoomSummaryR\x04room\x124\n\x06thread\x18\t \x01(\x0b2\x1c.chatto.api.v1.ThreadSummaryR\x06thread\x129\n\x0clatest_reply\x18\n \x01(\x0b2\x16.chatto.api.v1.MessageR\x0blatestReply\x12L\n#direct_message_participant_user_ids\x18\x0b \x03(\tR\x1fdirectMessageParticipantUserIdsJ\x04\x08\x01\x10\x04J\x04\x08\x05\x10\x08R\x07room_idR\troom_nameR\x14thread_root_event_idR\x0breply_countR\rlast_reply_atR\nhas_unread"\xac\x02\n\x1aListFollowedThreadsRequest\x12.\n\x04page\x18\x03 \x01(\x0b2\x1a.chatto.api.v1.PageRequestR\x04page\x12C\n\x1einclude_direct_message_threads\x18\x04 \x01(\x08R\x1bincludeDirectMessageThreads\x12\x1f\n\x0bunread_only\x18\x05 \x01(\x08R\nunreadOnly\x12]\n\x12root_author_filter\x18\x06 \x01(\x0e2%.chatto.api.v1.ThreadRootAuthorFilterR\x10rootAuthorFilterB\x08\xbaH\x05\x82\x01\x02\x10\x01J\x04\x08\x01\x10\x02J\x04\x08\x02\x10\x03R\x05limitR\x06offset"\xe7\x01\n\x1bListFollowedThreadsResponse\x127\n\x07threads\x18\x01 \x03(\x0b2\x1d.chatto.api.v1.FollowedThreadR\x07threads\x12?\n\x08includes\x18\x04 \x01(\x0b2#.chatto.api.v1.RoomTimelineIncludesR\x08includes\x12+\n\x04page\x18\x05 \x01(\x0b2\x17.chatto.api.v1.PageInfoR\x04pageJ\x04\x08\x02\x10\x03J\x04\x08\x03\x10\x04R\x0btotal_countR\x08has_more"\xab\x01\n\x1dListThreadParticipantsRequest\x12 \n\x07room_id\x18\x01 \x01(\tR\x06roomIdB\x07\xbaH\x04r\x02\x10\x01\x128\n\x14thread_root_event_id\x18\x02 \x01(\tR\x11threadRootEventIdB\x07\xbaH\x04r\x02\x10\x01\x12.\n\x04page\x18\x03 \x01(\x0b2\x1a.chatto.api.v1.PageRequestR\x04page"h\n\x1eListThreadParticipantsResponse\x12\x19\n\x08user_ids\x18\x01 \x03(\tR\x07userIds\x12+\n\x04page\x18\x02 \x01(\x0b2\x17.chatto.api.v1.PageInfoR\x04page*\x8f\x01\n\x16ThreadRootAuthorFilter\x12)\n%THREAD_ROOT_AUTHOR_FILTER_UNSPECIFIED\x10\x00\x12$\n THREAD_ROOT_AUTHOR_FILTER_VIEWER\x10\x01\x12$\n THREAD_ROOT_AUTHOR_FILTER_OTHERS\x10\x022\xcf\x07\n\rThreadService\x12i\n\x12GetThreadReadState\x12(.chatto.api.v1.GetThreadReadStateRequest\x1a).chatto.api.v1.GetThreadReadStateResponse\x12{\n\x18BatchGetThreadReadStates\x12..chatto.api.v1.BatchGetThreadReadStatesRequest\x1a/.chatto.api.v1.BatchGetThreadReadStatesResponse\x12u\n\x16ListThreadParticipants\x12,.chatto.api.v1.ListThreadParticipantsRequest\x1a-.chatto.api.v1.ListThreadParticipantsResponse\x12l\n\x13ListFollowedThreads\x12).chatto.api.v1.ListFollowedThreadsRequest\x1a*.chatto.api.v1.ListFollowedThreadsResponse\x12W\n\x0cFollowThread\x12".chatto.api.v1.FollowThreadRequest\x1a#.chatto.api.v1.FollowThreadResponse\x12]\n\x0eUnfollowThread\x12$.chatto.api.v1.UnfollowThreadRequest\x1a%.chatto.api.v1.UnfollowThreadResponse\x12`\n\x0fGetThreadEvents\x12%.chatto.api.v1.GetThreadEventsRequest\x1a&.chatto.api.v1.GetThreadEventsResponse\x12r\n\x15GetThreadEventsAround\x12+.chatto.api.v1.GetThreadEventsAroundRequest\x1a,.chatto.api.v1.GetThreadEventsAroundResponse\x12c\n\x10MarkThreadAsRead\x12&.chatto.api.v1.MarkThreadAsReadRequest\x1a\'.chatto.api.v1.MarkThreadAsReadResponseBw\n\x11com.chatto.api.v1B\x0cThreadsProtoP\x01\xa2\x02\x03CAX\xaa\x02\rChatto.Api.V1\xca\x02\rChatto\\Api\\V1\xe2\x02\x19Chatto\\Api\\V1\\GPBMetadata\xea\x02\x0fChatto::Api::V1b\x06proto3',
     [
         validate_pb.desc(),
         message_types_pb.desc(),
@@ -480,6 +532,7 @@ _DESC = file_desc(
         "ListFollowedThreadsResponse": ListFollowedThreadsResponse,
         "ListThreadParticipantsRequest": ListThreadParticipantsRequest,
         "ListThreadParticipantsResponse": ListThreadParticipantsResponse,
+        "ThreadRootAuthorFilter": ThreadRootAuthorFilter,
     },
 )
 

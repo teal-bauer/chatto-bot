@@ -33,8 +33,9 @@ class AdminDiagnosticsService(Protocol):
     """
     async def get_system_info(self, request: GetSystemInfoRequest, ctx: RequestContext[GetSystemInfoRequest, GetSystemInfoResponse], /) -> GetSystemInfoResponse:
         """
-        Returns broker, JetStream, and projection diagnostics. Requires the
-        server owner role.
+        Returns broker, JetStream, projection, and LiveKit diagnostics. Requires
+        the server owner role. The call checks the LiveKit server API, so it can
+        take up to five seconds when LiveKit does not reply.
         """
         raise ConnectError(Code.UNIMPLEMENTED, 'Not implemented')
 
@@ -91,8 +92,9 @@ class AdminDiagnosticsServiceClient(ConnectClient):
         timeout_ms: int | None = None,
     ) -> GetSystemInfoResponse:
         """
-        Returns broker, JetStream, and projection diagnostics. Requires the
-        server owner role.
+        Returns broker, JetStream, projection, and LiveKit diagnostics. Requires
+        the server owner role. The call checks the LiveKit server API, so it can
+        take up to five seconds when LiveKit does not reply.
         """
         return await self.execute_unary(
             request=request,
@@ -113,8 +115,9 @@ class AdminDiagnosticsServiceSync(Protocol):
     """
     def get_system_info(self, request: GetSystemInfoRequest, ctx: RequestContext[GetSystemInfoRequest, GetSystemInfoResponse], /) -> GetSystemInfoResponse:
         """
-        Returns broker, JetStream, and projection diagnostics. Requires the
-        server owner role.
+        Returns broker, JetStream, projection, and LiveKit diagnostics. Requires
+        the server owner role. The call checks the LiveKit server API, so it can
+        take up to five seconds when LiveKit does not reply.
         """
         raise ConnectError(Code.UNIMPLEMENTED, 'Not implemented')
 
@@ -169,8 +172,9 @@ class AdminDiagnosticsServiceClientSync(ConnectClientSync):
         timeout_ms: int | None = None,
     ) -> GetSystemInfoResponse:
         """
-        Returns broker, JetStream, and projection diagnostics. Requires the
-        server owner role.
+        Returns broker, JetStream, projection, and LiveKit diagnostics. Requires
+        the server owner role. The call checks the LiveKit server API, so it can
+        take up to five seconds when LiveKit does not reply.
         """
         return self.execute_unary(
             request=request,

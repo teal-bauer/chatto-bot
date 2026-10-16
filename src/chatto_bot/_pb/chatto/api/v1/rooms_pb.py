@@ -16,7 +16,7 @@ from . import attachments_pb, common_pb, member_directory_pb, message_types_pb, 
 from ....buf.validate import validate_pb
 
 if TYPE_CHECKING:
-    from protobuf import DescFile
+    from protobuf import DescFile, Oneof
     from protobuf.wkt import FieldMask, Timestamp
 
     from .attachments_pb import RoomAttachmentListItem
@@ -917,25 +917,25 @@ class RemoveMemberResponse(Message[_RemoveMemberResponseFields]):
 
         removed: bool
 
-_BanMemberRequestFields: TypeAlias = Literal["room_id", "user_id", "reason", "expires_at"]
+_RemoveUserRequestFields: TypeAlias = Literal["room_id", "user_id", "reason", "suspension_expires_at", "suspend_indefinitely"]
 
-class BanMemberRequest(Message[_BanMemberRequestFields]):
+class RemoveUserRequest(Message[_RemoveUserRequestFields]):
     """
-    Request to ban a member from a channel room.
+    Request to remove a user from a channel room for moderation.
 
     ```proto
-    message chatto.api.v1.BanMemberRequest
+    message chatto.api.v1.RemoveUserRequest
     ```
 
     Attributes:
         room_id:
-            Required. Channel room to ban the user from.
+            Required. Channel room to remove the user from.
 
             ```proto
             string room_id = 1;
             ```
         user_id:
-            Required. User to ban from the room.
+            Required. Current room member to remove.
 
             ```proto
             string user_id = 2;
@@ -946,15 +946,16 @@ class BanMemberRequest(Message[_BanMemberRequestFields]):
             ```proto
             string reason = 3;
             ```
-        expires_at:
-            Optional future time when the ban expires.
+        suspension:
+            Omit suspension to allow rejoining under normal room permissions.
+            A Universal room requires one suspension choice.
 
             ```proto
-            optional google.protobuf.Timestamp expires_at = 4;
+            oneof suspension
             ```
     """
 
-    __slots__ = ("room_id", "user_id", "reason", "expires_at")
+    __slots__ = ("room_id", "user_id", "reason", "suspension")
 
     if TYPE_CHECKING:
 
@@ -964,23 +965,23 @@ class BanMemberRequest(Message[_BanMemberRequestFields]):
             room_id: str = "",
             user_id: str = "",
             reason: str = "",
-            expires_at: Timestamp | None = None,
+            suspension: Oneof[Literal["suspension_expires_at"], Timestamp] | Oneof[Literal["suspend_indefinitely"], bool] | None = None,
         ) -> None:
             pass
 
         room_id: str
         user_id: str
         reason: str
-        expires_at: Timestamp | None
+        suspension: Oneof[Literal["suspension_expires_at"], Timestamp] | Oneof[Literal["suspend_indefinitely"], bool] | None
 
-_BanMemberResponseFields: TypeAlias = NoReturn
+_RemoveUserResponseFields: TypeAlias = NoReturn
 
-class BanMemberResponse(Message[_BanMemberResponseFields]):
+class RemoveUserResponse(Message[_RemoveUserResponseFields]):
     """
-    Result of banning a room member.
+    Result of a moderated room removal.
 
     ```proto
-    message chatto.api.v1.BanMemberResponse
+    message chatto.api.v1.RemoveUserResponse
     ```
     """
 
@@ -993,25 +994,25 @@ class BanMemberResponse(Message[_BanMemberResponseFields]):
         ) -> None:
             pass
 
-_UnbanMemberRequestFields: TypeAlias = Literal["room_id", "user_id", "reason"]
+_LiftSuspensionRequestFields: TypeAlias = Literal["room_id", "user_id", "reason"]
 
-class UnbanMemberRequest(Message[_UnbanMemberRequestFields]):
+class LiftSuspensionRequest(Message[_LiftSuspensionRequestFields]):
     """
-    Request to remove a channel room ban.
+    Request to lift a channel room suspension.
 
     ```proto
-    message chatto.api.v1.UnbanMemberRequest
+    message chatto.api.v1.LiftSuspensionRequest
     ```
 
     Attributes:
         room_id:
-            Required. Channel room to unban the user from.
+            Required. Channel room containing the suspension.
 
             ```proto
             string room_id = 1;
             ```
         user_id:
-            Required. User to unban.
+            Required. Suspended user.
 
             ```proto
             string user_id = 2;
@@ -1041,14 +1042,14 @@ class UnbanMemberRequest(Message[_UnbanMemberRequestFields]):
         user_id: str
         reason: str
 
-_UnbanMemberResponseFields: TypeAlias = NoReturn
+_LiftSuspensionResponseFields: TypeAlias = NoReturn
 
-class UnbanMemberResponse(Message[_UnbanMemberResponseFields]):
+class LiftSuspensionResponse(Message[_LiftSuspensionResponseFields]):
     """
-    Result of removing a room ban.
+    Result of lifting a room suspension.
 
     ```proto
-    message chatto.api.v1.UnbanMemberResponse
+    message chatto.api.v1.LiftSuspensionResponse
     ```
     """
 
@@ -1061,19 +1062,19 @@ class UnbanMemberResponse(Message[_UnbanMemberResponseFields]):
         ) -> None:
             pass
 
-_RoomBanFields: TypeAlias = Literal["id", "room_id", "room", "user_id", "user", "moderator_id", "moderator", "reason", "created_at", "expires_at"]
+_RoomSuspensionFields: TypeAlias = Literal["id", "room_id", "room", "user_id", "user", "moderator_id", "moderator", "reason", "created_at", "expires_at"]
 
-class RoomBan(Message[_RoomBanFields]):
+class RoomSuspension(Message[_RoomSuspensionFields]):
     """
-    Active channel room ban with optional hydrated room and user references.
+    Active channel room suspension with optional hydrated references.
 
     ```proto
-    message chatto.api.v1.RoomBan
+    message chatto.api.v1.RoomSuspension
     ```
 
     Attributes:
         id:
-            Stable ban event ID.
+            Stable suspension event ID.
 
             ```proto
             string id = 1;
@@ -1091,19 +1092,19 @@ class RoomBan(Message[_RoomBanFields]):
             optional chatto.api.v1.Room room = 3;
             ```
         user_id:
-            Banned user ID.
+            Suspended user ID.
 
             ```proto
             string user_id = 4;
             ```
         user:
-            Banned user profile, when the referenced user still exists.
+            Suspended user profile, when the referenced user still exists.
 
             ```proto
             optional chatto.api.v1.DirectoryMember user = 5;
             ```
         moderator_id:
-            Moderator user ID that created the ban.
+            Moderator user ID that created the suspension.
 
             ```proto
             string moderator_id = 6;
@@ -1115,19 +1116,19 @@ class RoomBan(Message[_RoomBanFields]):
             optional chatto.api.v1.DirectoryMember moderator = 7;
             ```
         reason:
-            Moderator-entered ban reason.
+            Moderator-entered removal reason.
 
             ```proto
             string reason = 8;
             ```
         created_at:
-            Time the ban was created.
+            Time the suspension was created.
 
             ```proto
             optional google.protobuf.Timestamp created_at = 9;
             ```
         expires_at:
-            Optional future time when the ban expires.
+            Optional future time when the suspension expires. Absence means indefinite.
 
             ```proto
             optional google.protobuf.Timestamp expires_at = 10;
@@ -1165,19 +1166,19 @@ class RoomBan(Message[_RoomBanFields]):
         created_at: Timestamp | None
         expires_at: Timestamp | None
 
-_ListBansRequestFields: TypeAlias = Literal["room_id", "page"]
+_ListSuspensionsRequestFields: TypeAlias = Literal["room_id", "page"]
 
-class ListBansRequest(Message[_ListBansRequestFields]):
+class ListSuspensionsRequest(Message[_ListSuspensionsRequestFields]):
     """
-    Request to list active room bans.
+    Request to list active room suspensions.
 
     ```proto
-    message chatto.api.v1.ListBansRequest
+    message chatto.api.v1.ListSuspensionsRequest
     ```
 
     Attributes:
         room_id:
-            Optional channel room filter. Empty lists active bans across all rooms.
+            Optional channel room filter. Empty lists active suspensions across all rooms.
 
             ```proto
             string room_id = 1;
@@ -1205,23 +1206,23 @@ class ListBansRequest(Message[_ListBansRequestFields]):
         room_id: str
         page: PageRequest | None
 
-_ListBansResponseFields: TypeAlias = Literal["bans", "page"]
+_ListSuspensionsResponseFields: TypeAlias = Literal["suspensions", "page"]
 
-class ListBansResponse(Message[_ListBansResponseFields]):
+class ListSuspensionsResponse(Message[_ListSuspensionsResponseFields]):
     """
-    Active room bans visible to the current moderator.
+    Active room suspensions visible to the current moderator.
 
     ```proto
-    message chatto.api.v1.ListBansResponse
+    message chatto.api.v1.ListSuspensionsResponse
     ```
 
     Attributes:
-        bans:
-            Active bans by creation time, newest first; equal times use ban event ID
+        suspensions:
+            Active suspensions by creation time, newest first; equal times use event ID
             in ascending order.
 
             ```proto
-            repeated chatto.api.v1.RoomBan bans = 1;
+            repeated chatto.api.v1.RoomSuspension suspensions = 1;
             ```
         page:
             Page metadata.
@@ -1231,19 +1232,19 @@ class ListBansResponse(Message[_ListBansResponseFields]):
             ```
     """
 
-    __slots__ = ("bans", "page")
+    __slots__ = ("suspensions", "page")
 
     if TYPE_CHECKING:
 
         def __init__(
             self,
             *,
-            bans: list[RoomBan] | None = None,
+            suspensions: list[RoomSuspension] | None = None,
             page: PageInfo | None = None,
         ) -> None:
             pass
 
-        bans: list[RoomBan]
+        suspensions: list[RoomSuspension]
         page: PageInfo | None
 
 _ListRoomAttachmentsRequestFields: TypeAlias = Literal["room_id", "thumbnail", "page"]
@@ -1695,7 +1696,7 @@ class RoomKind(Enum):
 
 
 _DESC = file_desc(
-    b'\n\x19chatto/api/v1/rooms.proto\x12\rchatto.api.v1\x1a google/protobuf/field_mask.proto\x1a\x1bbuf/validate/validate.proto\x1a\x1fchatto/api/v1/attachments.proto\x1a\x1achatto/api/v1/common.proto\x1a$chatto/api/v1/member_directory.proto\x1a\x1echatto/api/v1/pagination.proto\x1a\x1echatto/api/v1/read_state.proto\x1a!chatto/api/v1/room_timeline.proto\x1a!chatto/api/v1/message_types.proto\x1a\x1fgoogle/protobuf/timestamp.proto"\xc3\x02\n\x04Room\x12\x0e\n\x02id\x18\x01 \x01(\tR\x02id\x12+\n\x04kind\x18\x02 \x01(\x0e2\x17.chatto.api.v1.RoomKindR\x04kind\x12\x12\n\x04name\x18\x03 \x01(\tR\x04name\x12 \n\x0bdescription\x18\x04 \x01(\tR\x0bdescription\x12\x1a\n\x08archived\x18\x05 \x01(\x08R\x08archived\x12\x19\n\x08group_id\x18\x06 \x01(\tR\x07groupId\x12\x1c\n\tuniversal\x18\x07 \x01(\x08R\tuniversal\x12*\n\x11slow_mode_seconds\x18\x08 \x01(\rR\x0fslowModeSeconds\x12G\n\x0ethreading_mode\x18\t \x01(\x0e2 .chatto.api.v1.RoomThreadingModeR\rthreadingMode"^\n\x0bRoomSummary\x12\x0e\n\x02id\x18\x01 \x01(\tR\x02id\x12+\n\x04kind\x18\x02 \x01(\x0e2\x17.chatto.api.v1.RoomKindR\x04kind\x12\x12\n\x04name\x18\x03 \x01(\tR\x04name"\xe9\x01\n\x11CreateRoomRequest\x12\x1d\n\x04name\x18\x01 \x01(\tR\x04nameB\t\xbaH\x06r\x04\x10\x01\x18\x1e\x12*\n\x0bdescription\x18\x02 \x01(\tR\x0bdescriptionB\x08\xbaH\x05r\x03\x18\xf4\x03\x12"\n\x08group_id\x18\x03 \x01(\tR\x07groupIdB\x07\xbaH\x04r\x02\x10\x01\x12\x1c\n\tuniversal\x18\x04 \x01(\x08R\tuniversal\x12G\n\x0ethreading_mode\x18\x05 \x01(\x0e2 .chatto.api.v1.RoomThreadingModeR\rthreadingMode"=\n\x12CreateRoomResponse\x12\'\n\x04room\x18\x01 \x01(\x0b2\x13.chatto.api.v1.RoomR\x04room"\xc4\x03\n\x11UpdateRoomRequest\x12 \n\x07room_id\x18\x01 \x01(\tR\x06roomIdB\x07\xbaH\x04r\x02\x10\x01\x12"\n\x04name\x18\x02 \x01(\tH\x00R\x04nameB\t\xbaH\x06r\x04\x10\x01\x18\x1e\x88\x01\x01\x12/\n\x0bdescription\x18\x03 \x01(\tH\x01R\x0bdescriptionB\x08\xbaH\x05r\x03\x18\xf4\x03\x88\x01\x01\x12!\n\tuniversal\x18\x04 \x01(\x08H\x02R\tuniversal\x88\x01\x01\x12:\n\x11slow_mode_seconds\x18\x05 \x01(\rH\x03R\x0fslowModeSecondsB\t\xbaH\x06*\x04\x18\xe0\xa8\x01\x88\x01\x01\x12L\n\x0ethreading_mode\x18\x06 \x01(\x0e2 .chatto.api.v1.RoomThreadingModeH\x04R\rthreadingMode\x88\x01\x01\x12;\n\x0bupdate_mask\x18\x07 \x01(\x0b2\x1a.google.protobuf.FieldMaskR\nupdateMaskB\x07\n\x05_nameB\x0e\n\x0c_descriptionB\x0c\n\n_universalB\x14\n\x12_slow_mode_secondsB\x11\n\x0f_threading_mode"=\n\x12UpdateRoomResponse\x12\'\n\x04room\x18\x01 \x01(\x0b2\x13.chatto.api.v1.RoomR\x04room"6\n\x12ArchiveRoomRequest\x12 \n\x07room_id\x18\x01 \x01(\tR\x06roomIdB\x07\xbaH\x04r\x02\x10\x01">\n\x13ArchiveRoomResponse\x12\'\n\x04room\x18\x01 \x01(\x0b2\x13.chatto.api.v1.RoomR\x04room"8\n\x14UnarchiveRoomRequest\x12 \n\x07room_id\x18\x01 \x01(\tR\x06roomIdB\x07\xbaH\x04r\x02\x10\x01"@\n\x15UnarchiveRoomResponse\x12\'\n\x04room\x18\x01 \x01(\x0b2\x13.chatto.api.v1.RoomR\x04room"3\n\x0fJoinRoomRequest\x12 \n\x07room_id\x18\x01 \x01(\tR\x06roomIdB\x07\xbaH\x04r\x02\x10\x01";\n\x10JoinRoomResponse\x12\'\n\x04room\x18\x01 \x01(\x0b2\x13.chatto.api.v1.RoomR\x04room":\n\x14JoinRoomGroupRequest\x12"\n\x08group_id\x18\x01 \x01(\tR\x07groupIdB\x07\xbaH\x04r\x02\x10\x01"?\n\x15JoinRoomGroupResponse\x12&\n\x0fjoined_room_ids\x18\x01 \x03(\tR\rjoinedRoomIds"I\n\x0eStartDMRequest\x127\n\x0fparticipant_ids\x18\x01 \x03(\tR\x0eparticipantIdsB\x0e\xbaH\x0b\x92\x01\x08\x10\t"\x04r\x02\x10\x01":\n\x0fStartDMResponse\x12\'\n\x04room\x18\x01 \x01(\x0b2\x13.chatto.api.v1.RoomR\x04room"4\n\x10LeaveRoomRequest\x12 \n\x07room_id\x18\x01 \x01(\tR\x06roomIdB\x07\xbaH\x04r\x02\x10\x01"\x1f\n\x11LeaveRoomResponseJ\x04\x08\x01\x10\x02R\x04left"V\n\x10AddMemberRequest\x12 \n\x07room_id\x18\x01 \x01(\tR\x06roomIdB\x07\xbaH\x04r\x02\x10\x01\x12 \n\x07user_id\x18\x02 \x01(\tR\x06userIdB\x07\xbaH\x04r\x02\x10\x01"K\n\x11AddMemberResponse\x126\n\x06member\x18\x01 \x01(\x0b2\x1e.chatto.api.v1.DirectoryMemberR\x06member"Y\n\x13RemoveMemberRequest\x12 \n\x07room_id\x18\x01 \x01(\tR\x06roomIdB\x07\xbaH\x04r\x02\x10\x01\x12 \n\x07user_id\x18\x02 \x01(\tR\x06userIdB\x07\xbaH\x04r\x02\x10\x01"0\n\x14RemoveMemberResponse\x12\x18\n\x07removed\x18\x01 \x01(\x08R\x07removed"\xb5\x01\n\x10BanMemberRequest\x12 \n\x07room_id\x18\x01 \x01(\tR\x06roomIdB\x07\xbaH\x04r\x02\x10\x01\x12 \n\x07user_id\x18\x02 \x01(\tR\x06userIdB\x07\xbaH\x04r\x02\x10\x01\x12"\n\x06reason\x18\x03 \x01(\tR\x06reasonB\n\xbaH\x07r\x05\x10\x01\x18\xe8\x07\x129\n\nexpires_at\x18\x04 \x01(\x0b2\x1a.google.protobuf.TimestampR\texpiresAt"!\n\x11BanMemberResponseJ\x04\x08\x01\x10\x02R\x06banned"|\n\x12UnbanMemberRequest\x12 \n\x07room_id\x18\x01 \x01(\tR\x06roomIdB\x07\xbaH\x04r\x02\x10\x01\x12 \n\x07user_id\x18\x02 \x01(\tR\x06userIdB\x07\xbaH\x04r\x02\x10\x01\x12"\n\x06reason\x18\x03 \x01(\tR\x06reasonB\n\xbaH\x07r\x05\x10\x01\x18\xe8\x07"%\n\x13UnbanMemberResponseJ\x04\x08\x01\x10\x02R\x08unbanned"\x97\x03\n\x07RoomBan\x12\x0e\n\x02id\x18\x01 \x01(\tR\x02id\x12\x17\n\x07room_id\x18\x02 \x01(\tR\x06roomId\x12\'\n\x04room\x18\x03 \x01(\x0b2\x13.chatto.api.v1.RoomR\x04room\x12\x17\n\x07user_id\x18\x04 \x01(\tR\x06userId\x122\n\x04user\x18\x05 \x01(\x0b2\x1e.chatto.api.v1.DirectoryMemberR\x04user\x12!\n\x0cmoderator_id\x18\x06 \x01(\tR\x0bmoderatorId\x12<\n\tmoderator\x18\x07 \x01(\x0b2\x1e.chatto.api.v1.DirectoryMemberR\tmoderator\x12\x16\n\x06reason\x18\x08 \x01(\tR\x06reason\x129\n\ncreated_at\x18\t \x01(\x0b2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n\nexpires_at\x18\n \x01(\x0b2\x1a.google.protobuf.TimestampR\texpiresAt"Z\n\x0fListBansRequest\x12\x17\n\x07room_id\x18\x01 \x01(\tR\x06roomId\x12.\n\x04page\x18\x02 \x01(\x0b2\x1a.chatto.api.v1.PageRequestR\x04page"k\n\x10ListBansResponse\x12*\n\x04bans\x18\x01 \x03(\x0b2\x16.chatto.api.v1.RoomBanR\x04bans\x12+\n\x04page\x18\x02 \x01(\x0b2\x17.chatto.api.v1.PageInfoR\x04page"\xcd\x01\n\x1aListRoomAttachmentsRequest\x12 \n\x07room_id\x18\x01 \x01(\tR\x06roomIdB\x07\xbaH\x04r\x02\x10\x01\x12B\n\tthumbnail\x18\x04 \x01(\x0b2$.chatto.api.v1.ImageTransformOptionsR\tthumbnail\x12.\n\x04page\x18\x05 \x01(\x0b2\x1a.chatto.api.v1.PageRequestR\x04pageJ\x04\x08\x02\x10\x03J\x04\x08\x03\x10\x04R\x05limitR\x06offset"\xb6\x01\n\x1bListRoomAttachmentsResponse\x12G\n\x0battachments\x18\x01 \x03(\x0b2%.chatto.api.v1.RoomAttachmentListItemR\x0battachments\x12+\n\x04page\x18\x04 \x01(\x0b2\x17.chatto.api.v1.PageInfoR\x04pageJ\x04\x08\x02\x10\x03J\x04\x08\x03\x10\x04R\x0btotal_countR\x08has_more"A\n\rPinnedMessage\x120\n\x07message\x18\x01 \x01(\x0b2\x16.chatto.api.v1.MessageR\x07message"m\n\x19ListPinnedMessagesRequest\x12 \n\x07room_id\x18\x01 \x01(\tR\x06roomIdB\x07\xbaH\x04r\x02\x10\x01\x12.\n\x04page\x18\x02 \x01(\x0b2\x1a.chatto.api.v1.PageRequestR\x04page"\xbc\x01\n\x1aListPinnedMessagesResponse\x12E\n\x0fpinned_messages\x18\x01 \x03(\x0b2\x1c.chatto.api.v1.PinnedMessageR\x0epinnedMessages\x12+\n\x04page\x18\x02 \x01(\x0b2\x17.chatto.api.v1.PageInfoR\x04page\x12*\n\x11latest_pin_marker\x18\x03 \x01(\tR\x0flatestPinMarker"q\n\x1aCreatePinnedMessageRequest\x12 \n\x07room_id\x18\x01 \x01(\tR\x06roomIdB\x07\xbaH\x04r\x02\x10\x01\x121\n\x10message_event_id\x18\x02 \x01(\tR\x0emessageEventIdB\x07\xbaH\x04r\x02\x10\x01"b\n\x1bCreatePinnedMessageResponse\x12C\n\x0epinned_message\x18\x01 \x01(\x0b2\x1c.chatto.api.v1.PinnedMessageR\rpinnedMessage"q\n\x1aDeletePinnedMessageRequest\x12 \n\x07room_id\x18\x01 \x01(\tR\x06roomIdB\x07\xbaH\x04r\x02\x10\x01\x121\n\x10message_event_id\x18\x02 \x01(\tR\x0emessageEventIdB\x07\xbaH\x04r\x02\x10\x01"7\n\x1bDeletePinnedMessageResponse\x12\x18\n\x07deleted\x18\x01 \x01(\x08R\x07deleted"r\n\x1dRefreshTypingIndicatorRequest\x12 \n\x07room_id\x18\x01 \x01(\tR\x06roomIdB\x07\xbaH\x04r\x02\x10\x01\x12/\n\x14thread_root_event_id\x18\x02 \x01(\tR\x11threadRootEventId"/\n\x1eRefreshTypingIndicatorResponseJ\x04\x08\x01\x10\x02R\x07updated*N\n\x08RoomKind\x12\x19\n\x15ROOM_KIND_UNSPECIFIED\x10\x00\x12\x15\n\x11ROOM_KIND_CHANNEL\x10\x01\x12\x10\n\x0cROOM_KIND_DM\x10\x022\xfd\x12\n\x0bRoomService\x12c\n\x10GetRoomReadState\x12&.chatto.api.v1.GetRoomReadStateRequest\x1a\'.chatto.api.v1.GetRoomReadStateResponse\x12u\n\x16BatchGetRoomReadStates\x12,.chatto.api.v1.BatchGetRoomReadStatesRequest\x1a-.chatto.api.v1.BatchGetRoomReadStatesResponse\x12Q\n\nCreateRoom\x12 .chatto.api.v1.CreateRoomRequest\x1a!.chatto.api.v1.CreateRoomResponse\x12Q\n\nUpdateRoom\x12 .chatto.api.v1.UpdateRoomRequest\x1a!.chatto.api.v1.UpdateRoomResponse\x12T\n\x0bArchiveRoom\x12!.chatto.api.v1.ArchiveRoomRequest\x1a".chatto.api.v1.ArchiveRoomResponse\x12Z\n\rUnarchiveRoom\x12#.chatto.api.v1.UnarchiveRoomRequest\x1a$.chatto.api.v1.UnarchiveRoomResponse\x12K\n\x08JoinRoom\x12\x1e.chatto.api.v1.JoinRoomRequest\x1a\x1f.chatto.api.v1.JoinRoomResponse\x12Z\n\rJoinRoomGroup\x12#.chatto.api.v1.JoinRoomGroupRequest\x1a$.chatto.api.v1.JoinRoomGroupResponse\x12H\n\x07StartDM\x12\x1d.chatto.api.v1.StartDMRequest\x1a\x1e.chatto.api.v1.StartDMResponse\x12N\n\tLeaveRoom\x12\x1f.chatto.api.v1.LeaveRoomRequest\x1a .chatto.api.v1.LeaveRoomResponse\x12T\n\x0bListMembers\x12!.chatto.api.v1.ListMembersRequest\x1a".chatto.api.v1.ListMembersResponse\x12N\n\tGetMember\x12\x1f.chatto.api.v1.GetMemberRequest\x1a .chatto.api.v1.GetMemberResponse\x12`\n\x0fBatchGetMembers\x12%.chatto.api.v1.BatchGetMembersRequest\x1a&.chatto.api.v1.BatchGetMembersResponse\x12N\n\tAddMember\x12\x1f.chatto.api.v1.AddMemberRequest\x1a .chatto.api.v1.AddMemberResponse\x12W\n\x0cRemoveMember\x12".chatto.api.v1.RemoveMemberRequest\x1a#.chatto.api.v1.RemoveMemberResponse\x12K\n\x08ListBans\x12\x1e.chatto.api.v1.ListBansRequest\x1a\x1f.chatto.api.v1.ListBansResponse\x12l\n\x13ListRoomAttachments\x12).chatto.api.v1.ListRoomAttachmentsRequest\x1a*.chatto.api.v1.ListRoomAttachmentsResponse\x12i\n\x12ListPinnedMessages\x12(.chatto.api.v1.ListPinnedMessagesRequest\x1a).chatto.api.v1.ListPinnedMessagesResponse\x12l\n\x13CreatePinnedMessage\x12).chatto.api.v1.CreatePinnedMessageRequest\x1a*.chatto.api.v1.CreatePinnedMessageResponse\x12l\n\x13DeletePinnedMessage\x12).chatto.api.v1.DeletePinnedMessageRequest\x1a*.chatto.api.v1.DeletePinnedMessageResponse\x12u\n\x16RefreshTypingIndicator\x12,.chatto.api.v1.RefreshTypingIndicatorRequest\x1a-.chatto.api.v1.RefreshTypingIndicatorResponse\x12Z\n\rGetRoomEvents\x12#.chatto.api.v1.GetRoomEventsRequest\x1a$.chatto.api.v1.GetRoomEventsResponse\x12l\n\x13GetRoomEventsAround\x12).chatto.api.v1.GetRoomEventsAroundRequest\x1a*.chatto.api.v1.GetRoomEventsAroundResponse\x12]\n\x0eMarkRoomAsRead\x12$.chatto.api.v1.MarkRoomAsReadRequest\x1a%.chatto.api.v1.MarkRoomAsReadResponse\x12N\n\tBanMember\x12\x1f.chatto.api.v1.BanMemberRequest\x1a .chatto.api.v1.BanMemberResponse\x12T\n\x0bUnbanMember\x12!.chatto.api.v1.UnbanMemberRequest\x1a".chatto.api.v1.UnbanMemberResponseBu\n\x11com.chatto.api.v1B\nRoomsProtoP\x01\xa2\x02\x03CAX\xaa\x02\rChatto.Api.V1\xca\x02\rChatto\\Api\\V1\xe2\x02\x19Chatto\\Api\\V1\\GPBMetadata\xea\x02\x0fChatto::Api::V1b\x06proto3',
+    b'\n\x19chatto/api/v1/rooms.proto\x12\rchatto.api.v1\x1a google/protobuf/field_mask.proto\x1a\x1bbuf/validate/validate.proto\x1a\x1fchatto/api/v1/attachments.proto\x1a\x1achatto/api/v1/common.proto\x1a$chatto/api/v1/member_directory.proto\x1a\x1echatto/api/v1/pagination.proto\x1a\x1echatto/api/v1/read_state.proto\x1a!chatto/api/v1/room_timeline.proto\x1a!chatto/api/v1/message_types.proto\x1a\x1fgoogle/protobuf/timestamp.proto"\xc3\x02\n\x04Room\x12\x0e\n\x02id\x18\x01 \x01(\tR\x02id\x12+\n\x04kind\x18\x02 \x01(\x0e2\x17.chatto.api.v1.RoomKindR\x04kind\x12\x12\n\x04name\x18\x03 \x01(\tR\x04name\x12 \n\x0bdescription\x18\x04 \x01(\tR\x0bdescription\x12\x1a\n\x08archived\x18\x05 \x01(\x08R\x08archived\x12\x19\n\x08group_id\x18\x06 \x01(\tR\x07groupId\x12\x1c\n\tuniversal\x18\x07 \x01(\x08R\tuniversal\x12*\n\x11slow_mode_seconds\x18\x08 \x01(\rR\x0fslowModeSeconds\x12G\n\x0ethreading_mode\x18\t \x01(\x0e2 .chatto.api.v1.RoomThreadingModeR\rthreadingMode"^\n\x0bRoomSummary\x12\x0e\n\x02id\x18\x01 \x01(\tR\x02id\x12+\n\x04kind\x18\x02 \x01(\x0e2\x17.chatto.api.v1.RoomKindR\x04kind\x12\x12\n\x04name\x18\x03 \x01(\tR\x04name"\xe9\x01\n\x11CreateRoomRequest\x12\x1d\n\x04name\x18\x01 \x01(\tR\x04nameB\t\xbaH\x06r\x04\x10\x01\x18\x1e\x12*\n\x0bdescription\x18\x02 \x01(\tR\x0bdescriptionB\x08\xbaH\x05r\x03\x18\xf4\x03\x12"\n\x08group_id\x18\x03 \x01(\tR\x07groupIdB\x07\xbaH\x04r\x02\x10\x01\x12\x1c\n\tuniversal\x18\x04 \x01(\x08R\tuniversal\x12G\n\x0ethreading_mode\x18\x05 \x01(\x0e2 .chatto.api.v1.RoomThreadingModeR\rthreadingMode"=\n\x12CreateRoomResponse\x12\'\n\x04room\x18\x01 \x01(\x0b2\x13.chatto.api.v1.RoomR\x04room"\xc4\x03\n\x11UpdateRoomRequest\x12 \n\x07room_id\x18\x01 \x01(\tR\x06roomIdB\x07\xbaH\x04r\x02\x10\x01\x12"\n\x04name\x18\x02 \x01(\tH\x00R\x04nameB\t\xbaH\x06r\x04\x10\x01\x18\x1e\x88\x01\x01\x12/\n\x0bdescription\x18\x03 \x01(\tH\x01R\x0bdescriptionB\x08\xbaH\x05r\x03\x18\xf4\x03\x88\x01\x01\x12!\n\tuniversal\x18\x04 \x01(\x08H\x02R\tuniversal\x88\x01\x01\x12:\n\x11slow_mode_seconds\x18\x05 \x01(\rH\x03R\x0fslowModeSecondsB\t\xbaH\x06*\x04\x18\xe0\xa8\x01\x88\x01\x01\x12L\n\x0ethreading_mode\x18\x06 \x01(\x0e2 .chatto.api.v1.RoomThreadingModeH\x04R\rthreadingMode\x88\x01\x01\x12;\n\x0bupdate_mask\x18\x07 \x01(\x0b2\x1a.google.protobuf.FieldMaskR\nupdateMaskB\x07\n\x05_nameB\x0e\n\x0c_descriptionB\x0c\n\n_universalB\x14\n\x12_slow_mode_secondsB\x11\n\x0f_threading_mode"=\n\x12UpdateRoomResponse\x12\'\n\x04room\x18\x01 \x01(\x0b2\x13.chatto.api.v1.RoomR\x04room"6\n\x12ArchiveRoomRequest\x12 \n\x07room_id\x18\x01 \x01(\tR\x06roomIdB\x07\xbaH\x04r\x02\x10\x01">\n\x13ArchiveRoomResponse\x12\'\n\x04room\x18\x01 \x01(\x0b2\x13.chatto.api.v1.RoomR\x04room"8\n\x14UnarchiveRoomRequest\x12 \n\x07room_id\x18\x01 \x01(\tR\x06roomIdB\x07\xbaH\x04r\x02\x10\x01"@\n\x15UnarchiveRoomResponse\x12\'\n\x04room\x18\x01 \x01(\x0b2\x13.chatto.api.v1.RoomR\x04room"3\n\x0fJoinRoomRequest\x12 \n\x07room_id\x18\x01 \x01(\tR\x06roomIdB\x07\xbaH\x04r\x02\x10\x01";\n\x10JoinRoomResponse\x12\'\n\x04room\x18\x01 \x01(\x0b2\x13.chatto.api.v1.RoomR\x04room":\n\x14JoinRoomGroupRequest\x12"\n\x08group_id\x18\x01 \x01(\tR\x07groupIdB\x07\xbaH\x04r\x02\x10\x01"?\n\x15JoinRoomGroupResponse\x12&\n\x0fjoined_room_ids\x18\x01 \x03(\tR\rjoinedRoomIds"I\n\x0eStartDMRequest\x127\n\x0fparticipant_ids\x18\x01 \x03(\tR\x0eparticipantIdsB\x0e\xbaH\x0b\x92\x01\x08\x10\t"\x04r\x02\x10\x01":\n\x0fStartDMResponse\x12\'\n\x04room\x18\x01 \x01(\x0b2\x13.chatto.api.v1.RoomR\x04room"4\n\x10LeaveRoomRequest\x12 \n\x07room_id\x18\x01 \x01(\tR\x06roomIdB\x07\xbaH\x04r\x02\x10\x01"\x1f\n\x11LeaveRoomResponseJ\x04\x08\x01\x10\x02R\x04left"V\n\x10AddMemberRequest\x12 \n\x07room_id\x18\x01 \x01(\tR\x06roomIdB\x07\xbaH\x04r\x02\x10\x01\x12 \n\x07user_id\x18\x02 \x01(\tR\x06userIdB\x07\xbaH\x04r\x02\x10\x01"K\n\x11AddMemberResponse\x126\n\x06member\x18\x01 \x01(\x0b2\x1e.chatto.api.v1.DirectoryMemberR\x06member"Y\n\x13RemoveMemberRequest\x12 \n\x07room_id\x18\x01 \x01(\tR\x06roomIdB\x07\xbaH\x04r\x02\x10\x01\x12 \n\x07user_id\x18\x02 \x01(\tR\x06userIdB\x07\xbaH\x04r\x02\x10\x01"0\n\x14RemoveMemberResponse\x12\x18\n\x07removed\x18\x01 \x01(\x08R\x07removed"\x90\x02\n\x11RemoveUserRequest\x12 \n\x07room_id\x18\x01 \x01(\tR\x06roomIdB\x07\xbaH\x04r\x02\x10\x01\x12 \n\x07user_id\x18\x02 \x01(\tR\x06userIdB\x07\xbaH\x04r\x02\x10\x01\x12"\n\x06reason\x18\x03 \x01(\tR\x06reasonB\n\xbaH\x07r\x05\x10\x01\x18\xe8\x07\x12P\n\x15suspension_expires_at\x18\x04 \x01(\x0b2\x1a.google.protobuf.TimestampH\x00R\x13suspensionExpiresAt\x123\n\x14suspend_indefinitely\x18\x05 \x01(\x08H\x00R\x13suspendIndefinitelyB\x0c\n\nsuspension"\x14\n\x12RemoveUserResponse"\x7f\n\x15LiftSuspensionRequest\x12 \n\x07room_id\x18\x01 \x01(\tR\x06roomIdB\x07\xbaH\x04r\x02\x10\x01\x12 \n\x07user_id\x18\x02 \x01(\tR\x06userIdB\x07\xbaH\x04r\x02\x10\x01\x12"\n\x06reason\x18\x03 \x01(\tR\x06reasonB\n\xbaH\x07r\x05\x10\x01\x18\xe8\x07"\x18\n\x16LiftSuspensionResponse"\x9e\x03\n\x0eRoomSuspension\x12\x0e\n\x02id\x18\x01 \x01(\tR\x02id\x12\x17\n\x07room_id\x18\x02 \x01(\tR\x06roomId\x12\'\n\x04room\x18\x03 \x01(\x0b2\x13.chatto.api.v1.RoomR\x04room\x12\x17\n\x07user_id\x18\x04 \x01(\tR\x06userId\x122\n\x04user\x18\x05 \x01(\x0b2\x1e.chatto.api.v1.DirectoryMemberR\x04user\x12!\n\x0cmoderator_id\x18\x06 \x01(\tR\x0bmoderatorId\x12<\n\tmoderator\x18\x07 \x01(\x0b2\x1e.chatto.api.v1.DirectoryMemberR\tmoderator\x12\x16\n\x06reason\x18\x08 \x01(\tR\x06reason\x129\n\ncreated_at\x18\t \x01(\x0b2\x1a.google.protobuf.TimestampR\tcreatedAt\x129\n\nexpires_at\x18\n \x01(\x0b2\x1a.google.protobuf.TimestampR\texpiresAt"a\n\x16ListSuspensionsRequest\x12\x17\n\x07room_id\x18\x01 \x01(\tR\x06roomId\x12.\n\x04page\x18\x02 \x01(\x0b2\x1a.chatto.api.v1.PageRequestR\x04page"\x87\x01\n\x17ListSuspensionsResponse\x12?\n\x0bsuspensions\x18\x01 \x03(\x0b2\x1d.chatto.api.v1.RoomSuspensionR\x0bsuspensions\x12+\n\x04page\x18\x02 \x01(\x0b2\x17.chatto.api.v1.PageInfoR\x04page"\xcd\x01\n\x1aListRoomAttachmentsRequest\x12 \n\x07room_id\x18\x01 \x01(\tR\x06roomIdB\x07\xbaH\x04r\x02\x10\x01\x12B\n\tthumbnail\x18\x04 \x01(\x0b2$.chatto.api.v1.ImageTransformOptionsR\tthumbnail\x12.\n\x04page\x18\x05 \x01(\x0b2\x1a.chatto.api.v1.PageRequestR\x04pageJ\x04\x08\x02\x10\x03J\x04\x08\x03\x10\x04R\x05limitR\x06offset"\xb6\x01\n\x1bListRoomAttachmentsResponse\x12G\n\x0battachments\x18\x01 \x03(\x0b2%.chatto.api.v1.RoomAttachmentListItemR\x0battachments\x12+\n\x04page\x18\x04 \x01(\x0b2\x17.chatto.api.v1.PageInfoR\x04pageJ\x04\x08\x02\x10\x03J\x04\x08\x03\x10\x04R\x0btotal_countR\x08has_more"A\n\rPinnedMessage\x120\n\x07message\x18\x01 \x01(\x0b2\x16.chatto.api.v1.MessageR\x07message"m\n\x19ListPinnedMessagesRequest\x12 \n\x07room_id\x18\x01 \x01(\tR\x06roomIdB\x07\xbaH\x04r\x02\x10\x01\x12.\n\x04page\x18\x02 \x01(\x0b2\x1a.chatto.api.v1.PageRequestR\x04page"\xbc\x01\n\x1aListPinnedMessagesResponse\x12E\n\x0fpinned_messages\x18\x01 \x03(\x0b2\x1c.chatto.api.v1.PinnedMessageR\x0epinnedMessages\x12+\n\x04page\x18\x02 \x01(\x0b2\x17.chatto.api.v1.PageInfoR\x04page\x12*\n\x11latest_pin_marker\x18\x03 \x01(\tR\x0flatestPinMarker"q\n\x1aCreatePinnedMessageRequest\x12 \n\x07room_id\x18\x01 \x01(\tR\x06roomIdB\x07\xbaH\x04r\x02\x10\x01\x121\n\x10message_event_id\x18\x02 \x01(\tR\x0emessageEventIdB\x07\xbaH\x04r\x02\x10\x01"b\n\x1bCreatePinnedMessageResponse\x12C\n\x0epinned_message\x18\x01 \x01(\x0b2\x1c.chatto.api.v1.PinnedMessageR\rpinnedMessage"q\n\x1aDeletePinnedMessageRequest\x12 \n\x07room_id\x18\x01 \x01(\tR\x06roomIdB\x07\xbaH\x04r\x02\x10\x01\x121\n\x10message_event_id\x18\x02 \x01(\tR\x0emessageEventIdB\x07\xbaH\x04r\x02\x10\x01"7\n\x1bDeletePinnedMessageResponse\x12\x18\n\x07deleted\x18\x01 \x01(\x08R\x07deleted"r\n\x1dRefreshTypingIndicatorRequest\x12 \n\x07room_id\x18\x01 \x01(\tR\x06roomIdB\x07\xbaH\x04r\x02\x10\x01\x12/\n\x14thread_root_event_id\x18\x02 \x01(\tR\x11threadRootEventId"/\n\x1eRefreshTypingIndicatorResponseJ\x04\x08\x01\x10\x02R\x07updated*N\n\x08RoomKind\x12\x19\n\x15ROOM_KIND_UNSPECIFIED\x10\x00\x12\x15\n\x11ROOM_KIND_CHANNEL\x10\x01\x12\x10\n\x0cROOM_KIND_DM\x10\x022\x9e\x13\n\x0bRoomService\x12c\n\x10GetRoomReadState\x12&.chatto.api.v1.GetRoomReadStateRequest\x1a\'.chatto.api.v1.GetRoomReadStateResponse\x12u\n\x16BatchGetRoomReadStates\x12,.chatto.api.v1.BatchGetRoomReadStatesRequest\x1a-.chatto.api.v1.BatchGetRoomReadStatesResponse\x12Q\n\nCreateRoom\x12 .chatto.api.v1.CreateRoomRequest\x1a!.chatto.api.v1.CreateRoomResponse\x12Q\n\nUpdateRoom\x12 .chatto.api.v1.UpdateRoomRequest\x1a!.chatto.api.v1.UpdateRoomResponse\x12T\n\x0bArchiveRoom\x12!.chatto.api.v1.ArchiveRoomRequest\x1a".chatto.api.v1.ArchiveRoomResponse\x12Z\n\rUnarchiveRoom\x12#.chatto.api.v1.UnarchiveRoomRequest\x1a$.chatto.api.v1.UnarchiveRoomResponse\x12K\n\x08JoinRoom\x12\x1e.chatto.api.v1.JoinRoomRequest\x1a\x1f.chatto.api.v1.JoinRoomResponse\x12Z\n\rJoinRoomGroup\x12#.chatto.api.v1.JoinRoomGroupRequest\x1a$.chatto.api.v1.JoinRoomGroupResponse\x12H\n\x07StartDM\x12\x1d.chatto.api.v1.StartDMRequest\x1a\x1e.chatto.api.v1.StartDMResponse\x12N\n\tLeaveRoom\x12\x1f.chatto.api.v1.LeaveRoomRequest\x1a .chatto.api.v1.LeaveRoomResponse\x12T\n\x0bListMembers\x12!.chatto.api.v1.ListMembersRequest\x1a".chatto.api.v1.ListMembersResponse\x12N\n\tGetMember\x12\x1f.chatto.api.v1.GetMemberRequest\x1a .chatto.api.v1.GetMemberResponse\x12`\n\x0fBatchGetMembers\x12%.chatto.api.v1.BatchGetMembersRequest\x1a&.chatto.api.v1.BatchGetMembersResponse\x12N\n\tAddMember\x12\x1f.chatto.api.v1.AddMemberRequest\x1a .chatto.api.v1.AddMemberResponse\x12W\n\x0cRemoveMember\x12".chatto.api.v1.RemoveMemberRequest\x1a#.chatto.api.v1.RemoveMemberResponse\x12`\n\x0fListSuspensions\x12%.chatto.api.v1.ListSuspensionsRequest\x1a&.chatto.api.v1.ListSuspensionsResponse\x12l\n\x13ListRoomAttachments\x12).chatto.api.v1.ListRoomAttachmentsRequest\x1a*.chatto.api.v1.ListRoomAttachmentsResponse\x12i\n\x12ListPinnedMessages\x12(.chatto.api.v1.ListPinnedMessagesRequest\x1a).chatto.api.v1.ListPinnedMessagesResponse\x12l\n\x13CreatePinnedMessage\x12).chatto.api.v1.CreatePinnedMessageRequest\x1a*.chatto.api.v1.CreatePinnedMessageResponse\x12l\n\x13DeletePinnedMessage\x12).chatto.api.v1.DeletePinnedMessageRequest\x1a*.chatto.api.v1.DeletePinnedMessageResponse\x12u\n\x16RefreshTypingIndicator\x12,.chatto.api.v1.RefreshTypingIndicatorRequest\x1a-.chatto.api.v1.RefreshTypingIndicatorResponse\x12Z\n\rGetRoomEvents\x12#.chatto.api.v1.GetRoomEventsRequest\x1a$.chatto.api.v1.GetRoomEventsResponse\x12l\n\x13GetRoomEventsAround\x12).chatto.api.v1.GetRoomEventsAroundRequest\x1a*.chatto.api.v1.GetRoomEventsAroundResponse\x12]\n\x0eMarkRoomAsRead\x12$.chatto.api.v1.MarkRoomAsReadRequest\x1a%.chatto.api.v1.MarkRoomAsReadResponse\x12Q\n\nRemoveUser\x12 .chatto.api.v1.RemoveUserRequest\x1a!.chatto.api.v1.RemoveUserResponse\x12]\n\x0eLiftSuspension\x12$.chatto.api.v1.LiftSuspensionRequest\x1a%.chatto.api.v1.LiftSuspensionResponseBu\n\x11com.chatto.api.v1B\nRoomsProtoP\x01\xa2\x02\x03CAX\xaa\x02\rChatto.Api.V1\xca\x02\rChatto\\Api\\V1\xe2\x02\x19Chatto\\Api\\V1\\GPBMetadata\xea\x02\x0fChatto::Api::V1b\x06proto3',
     [
         field_mask_pb.desc(),
         validate_pb.desc(),
@@ -1731,13 +1732,13 @@ _DESC = file_desc(
         "AddMemberResponse": AddMemberResponse,
         "RemoveMemberRequest": RemoveMemberRequest,
         "RemoveMemberResponse": RemoveMemberResponse,
-        "BanMemberRequest": BanMemberRequest,
-        "BanMemberResponse": BanMemberResponse,
-        "UnbanMemberRequest": UnbanMemberRequest,
-        "UnbanMemberResponse": UnbanMemberResponse,
-        "RoomBan": RoomBan,
-        "ListBansRequest": ListBansRequest,
-        "ListBansResponse": ListBansResponse,
+        "RemoveUserRequest": RemoveUserRequest,
+        "RemoveUserResponse": RemoveUserResponse,
+        "LiftSuspensionRequest": LiftSuspensionRequest,
+        "LiftSuspensionResponse": LiftSuspensionResponse,
+        "RoomSuspension": RoomSuspension,
+        "ListSuspensionsRequest": ListSuspensionsRequest,
+        "ListSuspensionsResponse": ListSuspensionsResponse,
         "ListRoomAttachmentsRequest": ListRoomAttachmentsRequest,
         "ListRoomAttachmentsResponse": ListRoomAttachmentsResponse,
         "PinnedMessage": PinnedMessage,

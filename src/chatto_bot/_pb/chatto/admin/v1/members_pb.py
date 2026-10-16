@@ -10,7 +10,7 @@ from typing import Literal, NoReturn, TYPE_CHECKING, TypeAlias
 
 from protobuf import Message
 from protobuf._codegen import file_desc
-from protobuf.wkt import field_mask_pb, timestamp_pb
+from protobuf.wkt import timestamp_pb
 
 from . import roles_pb
 from ....buf.validate import validate_pb
@@ -18,7 +18,7 @@ from ...api.v1 import pagination_pb, roles_pb as roles_pb_, users_pb
 
 if TYPE_CHECKING:
     from protobuf import DescFile, Oneof
-    from protobuf.wkt import FieldMask, Timestamp
+    from protobuf.wkt import Timestamp
 
     from ...api.v1.pagination_pb import PageInfo, PageRequest
     from ...api.v1.roles_pb import Role
@@ -71,7 +71,7 @@ class AdminMember(Message[_AdminMemberFields]):
             bool viewer_can_delete_account = 10;
             ```
         last_login_change:
-            Last self-service username change, when visible and known.
+            Start of the current username-change cooldown, when visible and known.
 
             ```proto
             optional google.protobuf.Timestamp last_login_change = 11;
@@ -548,107 +548,6 @@ class RevokeRoleResponse(Message[_RevokeRoleResponseFields]):
 
         member: AdminMember | None
 
-_UpdateUserRequestFields: TypeAlias = Literal["user_id", "display_name", "login", "update_mask"]
-
-class UpdateUserRequest(Message[_UpdateUserRequestFields]):
-    """
-    Request to update a user's identity as a server-admin action.
-
-    ```proto
-    message chatto.admin.v1.UpdateUserRequest
-    ```
-
-    Attributes:
-        user_id:
-            Target user ID.
-
-            ```proto
-            string user_id = 1;
-            ```
-        display_name:
-            New non-empty display name. The server also rejects control and
-            confusing invisible characters.
-
-            ```proto
-            optional string display_name = 2;
-            ```
-        login:
-            New login identifier, when changing it. The server accepts ASCII letters,
-            digits, period, underscore, and hyphen, starting with a letter or digit.
-
-            ```proto
-            optional string login = 3;
-            ```
-        update_mask:
-            Editable fields to apply or reset: display_name, login.
-            Omit to infer populated fields; * selects all editable fields. An explicit
-            empty mask is invalid. Unselected values are ignored. Selected absent values
-            reset the field to its default, subject to field validation.
-
-            ```proto
-            optional google.protobuf.FieldMask update_mask = 4;
-            ```
-    """
-
-    __slots__ = ("user_id", "display_name", "login", "update_mask")
-
-    if TYPE_CHECKING:
-
-        def __init__(
-            self,
-            *,
-            user_id: str = "",
-            display_name: str | None = None,
-            login: str | None = None,
-            update_mask: FieldMask | None = None,
-        ) -> None:
-            pass
-
-        user_id: str
-        display_name: str
-        login: str
-        update_mask: FieldMask | None
-
-_UpdateUserResponseFields: TypeAlias = Literal["user", "member"]
-
-class UpdateUserResponse(Message[_UpdateUserResponseFields]):
-    """
-    Result of an admin user update.
-
-    ```proto
-    message chatto.admin.v1.UpdateUserResponse
-    ```
-
-    Attributes:
-        user:
-            Updated user profile.
-
-            ```proto
-            optional chatto.api.v1.User user = 1;
-            ```
-        member:
-            Updated admin member row.
-
-            ```proto
-            optional chatto.admin.v1.AdminMember member = 2;
-            ```
-    """
-
-    __slots__ = ("user", "member")
-
-    if TYPE_CHECKING:
-
-        def __init__(
-            self,
-            *,
-            user: User | None = None,
-            member: AdminMember | None = None,
-        ) -> None:
-            pass
-
-        user: User | None
-        member: AdminMember | None
-
 _ChangeUserPasswordRequestFields: TypeAlias = Literal["user_id", "password"]
 
 class ChangeUserPasswordRequest(Message[_ChangeUserPasswordRequestFields]):
@@ -828,9 +727,8 @@ class DeleteUserResponse(Message[_DeleteUserResponseFields]):
 
 
 _DESC = file_desc(
-    b'\n\x1dchatto/admin/v1/members.proto\x12\x0fchatto.admin.v1\x1a google/protobuf/field_mask.proto\x1a\x1bbuf/validate/validate.proto\x1a\x1echatto/api/v1/pagination.proto\x1a\x19chatto/api/v1/roles.proto\x1a\x19chatto/api/v1/users.proto\x1a\x1bchatto/admin/v1/roles.proto\x1a\x1fgoogle/protobuf/timestamp.proto"\xf1\x03\n\x0bAdminMember\x12\x14\n\x05roles\x18\x05 \x03(\tR\x05roles\x129\n\ncreated_at\x18\x06 \x01(\x0b2\x1a.google.protobuf.TimestampR\tcreatedAt\x12,\n\x12has_verified_email\x18\x08 \x01(\x08R\x10hasVerifiedEmail\x12\'\n\x0fverified_emails\x18\t \x03(\tR\x0everifiedEmails\x129\n\x19viewer_can_delete_account\x18\n \x01(\x08R\x16viewerCanDeleteAccount\x12F\n\x11last_login_change\x18\x0b \x01(\x0b2\x1a.google.protobuf.TimestampR\x0flastLoginChange\x12\'\n\x04user\x18\x0c \x01(\x0b2\x13.chatto.api.v1.UserR\x04user\x129\n\x16primary_verified_email\x18\r \x01(\tH\x00R\x14primaryVerifiedEmail\x88\x01\x01B\x19\n\x17_primary_verified_emailJ\x04\x08\x01\x10\x05J\x04\x08\x07\x10\x08R\x02idR\x05loginR\x0cdisplay_nameR\navatar_urlR\x07deleted"w\n\x12ListMembersRequest\x12\x16\n\x06search\x18\x01 \x01(\tR\x06search\x12.\n\x04page\x18\x04 \x01(\x0b2\x1a.chatto.api.v1.PageRequestR\x04pageJ\x04\x08\x02\x10\x03J\x04\x08\x03\x10\x04R\x05limitR\x06offset"\x8a\x01\n\x13ListMembersResponse\x12+\n\x04page\x18\x05 \x01(\x0b2\x17.chatto.api.v1.PageInfoR\x04page\x12\x19\n\x08user_ids\x18\x06 \x03(\tR\x07userIdsJ\x04\x08\x01\x10\x05R\x07membersR\x05rolesR\x0btotal_countR\x08has_more"a\n\x10GetMemberRequest\x12"\n\x07user_id\x18\x01 \x01(\tH\x00R\x06userIdB\x07\xbaH\x04r\x02\x10\x01\x12\x1f\n\x05login\x18\x02 \x01(\tH\x00R\x05loginB\x07\xbaH\x04r\x02\x10\x01B\x08\n\x06target"\x97\x04\n\x11GetMemberResponse\x124\n\x06member\x18\x01 \x01(\x0b2\x1c.chatto.admin.v1.AdminMemberR\x06member\x120\n\x05roles\x18\x02 \x03(\x0b2\x1a.chatto.admin.v1.AdminRoleR\x05roles\x123\n\x15available_permissions\x18\x03 \x03(\tR\x14availablePermissions\x125\n\x17viewer_can_assign_roles\x18\x04 \x01(\x08R\x14viewerCanAssignRoles\x125\n\x17viewer_can_manage_roles\x18\x05 \x01(\x08R\x14viewerCanManageRoles\x12J\n"viewer_can_manage_user_permissions\x18\x06 \x01(\x08R\x1eviewerCanManageUserPermissions\x122\n\x15assignable_role_names\x18\x07 \x03(\tR\x13assignableRoleNames\x120\n\x14revocable_role_names\x18\x08 \x03(\tR\x12revocableRoleNames\x12E\n\x1frole_assignment_limits_enforced\x18\t \x01(\x08R\x1croleAssignmentLimitsEnforced"E\n\x16BatchGetMembersRequest\x12+\n\x08user_ids\x18\x01 \x03(\tR\x07userIdsB\x10\xbaH\r\x92\x01\n\x08\x01\x10d"\x04r\x02\x10\x01"|\n\x17BatchGetMembersResponse\x126\n\x07members\x18\x01 \x03(\x0b2\x1c.chatto.admin.v1.AdminMemberR\x07members\x12)\n\x05roles\x18\x02 \x03(\x0b2\x13.chatto.api.v1.RoleR\x05roles"[\n\x11AssignRoleRequest\x12 \n\x07user_id\x18\x01 \x01(\tR\x06userIdB\x07\xbaH\x04r\x02\x10\x01\x12$\n\trole_name\x18\x02 \x01(\tR\x08roleNameB\x07\xbaH\x04r\x02\x10\x01"Z\n\x12AssignRoleResponse\x124\n\x06member\x18\x02 \x01(\x0b2\x1c.chatto.admin.v1.AdminMemberR\x06memberJ\x04\x08\x01\x10\x02R\x08assigned"[\n\x11RevokeRoleRequest\x12 \n\x07user_id\x18\x01 \x01(\tR\x06userIdB\x07\xbaH\x04r\x02\x10\x01\x12$\n\trole_name\x18\x02 \x01(\tR\x08roleNameB\x07\xbaH\x04r\x02\x10\x01"Y\n\x12RevokeRoleResponse\x124\n\x06member\x18\x02 \x01(\x0b2\x1c.chatto.admin.v1.AdminMemberR\x06memberJ\x04\x08\x01\x10\x02R\x07revoked"\xe6\x01\n\x11UpdateUserRequest\x12 \n\x07user_id\x18\x01 \x01(\tR\x06userIdB\x07\xbaH\x04r\x02\x10\x01\x121\n\x0cdisplay_name\x18\x02 \x01(\tH\x00R\x0bdisplayNameB\t\xbaH\x06r\x04\x10\x01\x18 \x88\x01\x01\x12$\n\x05login\x18\x03 \x01(\tH\x01R\x05loginB\t\xbaH\x06r\x04\x10\x02\x18 \x88\x01\x01\x12;\n\x0bupdate_mask\x18\x04 \x01(\x0b2\x1a.google.protobuf.FieldMaskR\nupdateMaskB\x0f\n\r_display_nameB\x08\n\x06_login"s\n\x12UpdateUserResponse\x12\'\n\x04user\x18\x01 \x01(\x0b2\x13.chatto.api.v1.UserR\x04user\x124\n\x06member\x18\x02 \x01(\x0b2\x1c.chatto.admin.v1.AdminMemberR\x06member"e\n\x19ChangeUserPasswordRequest\x12 \n\x07user_id\x18\x01 \x01(\tR\x06userIdB\x07\xbaH\x04r\x02\x10\x01\x12&\n\x08password\x18\x02 \x01(\tR\x08passwordB\n\xbaH\x07r\x05\x10\x08\x18\x80\x01"R\n\x1aChangeUserPasswordResponse\x124\n\x06member\x18\x01 \x01(\x0b2\x1c.chatto.admin.v1.AdminMemberR\x06member"@\n\x1cClearUsernameCooldownRequest\x12 \n\x07user_id\x18\x01 \x01(\tR\x06userIdB\x07\xbaH\x04r\x02\x10\x01".\n\x1dClearUsernameCooldownResponseJ\x04\x08\x01\x10\x02R\x07cleared"M\n\x11DeleteUserRequest\x12 \n\x07user_id\x18\x01 \x01(\tR\x06userIdB\x07\xbaH\x04r\x02\x10\x01J\x04\x08\x02\x10\x03R\x10current_password"#\n\x12DeleteUserResponseJ\x04\x08\x01\x10\x02R\x07deleted2\xe9\x06\n\x10AdminUserService\x12X\n\x0bListMembers\x12#.chatto.admin.v1.ListMembersRequest\x1a$.chatto.admin.v1.ListMembersResponse\x12R\n\tGetMember\x12!.chatto.admin.v1.GetMemberRequest\x1a".chatto.admin.v1.GetMemberResponse\x12d\n\x0fBatchGetMembers\x12\'.chatto.admin.v1.BatchGetMembersRequest\x1a(.chatto.admin.v1.BatchGetMembersResponse\x12U\n\nAssignRole\x12".chatto.admin.v1.AssignRoleRequest\x1a#.chatto.admin.v1.AssignRoleResponse\x12U\n\nRevokeRole\x12".chatto.admin.v1.RevokeRoleRequest\x1a#.chatto.admin.v1.RevokeRoleResponse\x12U\n\nUpdateUser\x12".chatto.admin.v1.UpdateUserRequest\x1a#.chatto.admin.v1.UpdateUserResponse\x12m\n\x12ChangeUserPassword\x12*.chatto.admin.v1.ChangeUserPasswordRequest\x1a+.chatto.admin.v1.ChangeUserPasswordResponse\x12v\n\x15ClearUsernameCooldown\x12-.chatto.admin.v1.ClearUsernameCooldownRequest\x1a..chatto.admin.v1.ClearUsernameCooldownResponse\x12U\n\nDeleteUser\x12".chatto.admin.v1.DeleteUserRequest\x1a#.chatto.admin.v1.DeleteUserResponseB\x81\x01\n\x13com.chatto.admin.v1B\x0cMembersProtoP\x01\xa2\x02\x03CAX\xaa\x02\x0fChatto.Admin.V1\xca\x02\x0fChatto\\Admin\\V1\xe2\x02\x1bChatto\\Admin\\V1\\GPBMetadata\xea\x02\x11Chatto::Admin::V1b\x06proto3',
+    b'\n\x1dchatto/admin/v1/members.proto\x12\x0fchatto.admin.v1\x1a\x1bbuf/validate/validate.proto\x1a\x1echatto/api/v1/pagination.proto\x1a\x19chatto/api/v1/roles.proto\x1a\x19chatto/api/v1/users.proto\x1a\x1bchatto/admin/v1/roles.proto\x1a\x1fgoogle/protobuf/timestamp.proto"\xf1\x03\n\x0bAdminMember\x12\x14\n\x05roles\x18\x05 \x03(\tR\x05roles\x129\n\ncreated_at\x18\x06 \x01(\x0b2\x1a.google.protobuf.TimestampR\tcreatedAt\x12,\n\x12has_verified_email\x18\x08 \x01(\x08R\x10hasVerifiedEmail\x12\'\n\x0fverified_emails\x18\t \x03(\tR\x0everifiedEmails\x129\n\x19viewer_can_delete_account\x18\n \x01(\x08R\x16viewerCanDeleteAccount\x12F\n\x11last_login_change\x18\x0b \x01(\x0b2\x1a.google.protobuf.TimestampR\x0flastLoginChange\x12\'\n\x04user\x18\x0c \x01(\x0b2\x13.chatto.api.v1.UserR\x04user\x129\n\x16primary_verified_email\x18\r \x01(\tH\x00R\x14primaryVerifiedEmail\x88\x01\x01B\x19\n\x17_primary_verified_emailJ\x04\x08\x01\x10\x05J\x04\x08\x07\x10\x08R\x02idR\x05loginR\x0cdisplay_nameR\navatar_urlR\x07deleted"w\n\x12ListMembersRequest\x12\x16\n\x06search\x18\x01 \x01(\tR\x06search\x12.\n\x04page\x18\x04 \x01(\x0b2\x1a.chatto.api.v1.PageRequestR\x04pageJ\x04\x08\x02\x10\x03J\x04\x08\x03\x10\x04R\x05limitR\x06offset"\x8a\x01\n\x13ListMembersResponse\x12+\n\x04page\x18\x05 \x01(\x0b2\x17.chatto.api.v1.PageInfoR\x04page\x12\x19\n\x08user_ids\x18\x06 \x03(\tR\x07userIdsJ\x04\x08\x01\x10\x05R\x07membersR\x05rolesR\x0btotal_countR\x08has_more"a\n\x10GetMemberRequest\x12"\n\x07user_id\x18\x01 \x01(\tH\x00R\x06userIdB\x07\xbaH\x04r\x02\x10\x01\x12\x1f\n\x05login\x18\x02 \x01(\tH\x00R\x05loginB\x07\xbaH\x04r\x02\x10\x01B\x08\n\x06target"\x97\x04\n\x11GetMemberResponse\x124\n\x06member\x18\x01 \x01(\x0b2\x1c.chatto.admin.v1.AdminMemberR\x06member\x120\n\x05roles\x18\x02 \x03(\x0b2\x1a.chatto.admin.v1.AdminRoleR\x05roles\x123\n\x15available_permissions\x18\x03 \x03(\tR\x14availablePermissions\x125\n\x17viewer_can_assign_roles\x18\x04 \x01(\x08R\x14viewerCanAssignRoles\x125\n\x17viewer_can_manage_roles\x18\x05 \x01(\x08R\x14viewerCanManageRoles\x12J\n"viewer_can_manage_user_permissions\x18\x06 \x01(\x08R\x1eviewerCanManageUserPermissions\x122\n\x15assignable_role_names\x18\x07 \x03(\tR\x13assignableRoleNames\x120\n\x14revocable_role_names\x18\x08 \x03(\tR\x12revocableRoleNames\x12E\n\x1frole_assignment_limits_enforced\x18\t \x01(\x08R\x1croleAssignmentLimitsEnforced"E\n\x16BatchGetMembersRequest\x12+\n\x08user_ids\x18\x01 \x03(\tR\x07userIdsB\x10\xbaH\r\x92\x01\n\x08\x01\x10d"\x04r\x02\x10\x01"|\n\x17BatchGetMembersResponse\x126\n\x07members\x18\x01 \x03(\x0b2\x1c.chatto.admin.v1.AdminMemberR\x07members\x12)\n\x05roles\x18\x02 \x03(\x0b2\x13.chatto.api.v1.RoleR\x05roles"[\n\x11AssignRoleRequest\x12 \n\x07user_id\x18\x01 \x01(\tR\x06userIdB\x07\xbaH\x04r\x02\x10\x01\x12$\n\trole_name\x18\x02 \x01(\tR\x08roleNameB\x07\xbaH\x04r\x02\x10\x01"Z\n\x12AssignRoleResponse\x124\n\x06member\x18\x02 \x01(\x0b2\x1c.chatto.admin.v1.AdminMemberR\x06memberJ\x04\x08\x01\x10\x02R\x08assigned"[\n\x11RevokeRoleRequest\x12 \n\x07user_id\x18\x01 \x01(\tR\x06userIdB\x07\xbaH\x04r\x02\x10\x01\x12$\n\trole_name\x18\x02 \x01(\tR\x08roleNameB\x07\xbaH\x04r\x02\x10\x01"Y\n\x12RevokeRoleResponse\x124\n\x06member\x18\x02 \x01(\x0b2\x1c.chatto.admin.v1.AdminMemberR\x06memberJ\x04\x08\x01\x10\x02R\x07revoked"e\n\x19ChangeUserPasswordRequest\x12 \n\x07user_id\x18\x01 \x01(\tR\x06userIdB\x07\xbaH\x04r\x02\x10\x01\x12&\n\x08password\x18\x02 \x01(\tR\x08passwordB\n\xbaH\x07r\x05\x10\x08\x18\x80\x01"R\n\x1aChangeUserPasswordResponse\x124\n\x06member\x18\x01 \x01(\x0b2\x1c.chatto.admin.v1.AdminMemberR\x06member"@\n\x1cClearUsernameCooldownRequest\x12 \n\x07user_id\x18\x01 \x01(\tR\x06userIdB\x07\xbaH\x04r\x02\x10\x01".\n\x1dClearUsernameCooldownResponseJ\x04\x08\x01\x10\x02R\x07cleared"M\n\x11DeleteUserRequest\x12 \n\x07user_id\x18\x01 \x01(\tR\x06userIdB\x07\xbaH\x04r\x02\x10\x01J\x04\x08\x02\x10\x03R\x10current_password"#\n\x12DeleteUserResponseJ\x04\x08\x01\x10\x02R\x07deleted2\x92\x06\n\x10AdminUserService\x12X\n\x0bListMembers\x12#.chatto.admin.v1.ListMembersRequest\x1a$.chatto.admin.v1.ListMembersResponse\x12R\n\tGetMember\x12!.chatto.admin.v1.GetMemberRequest\x1a".chatto.admin.v1.GetMemberResponse\x12d\n\x0fBatchGetMembers\x12\'.chatto.admin.v1.BatchGetMembersRequest\x1a(.chatto.admin.v1.BatchGetMembersResponse\x12U\n\nAssignRole\x12".chatto.admin.v1.AssignRoleRequest\x1a#.chatto.admin.v1.AssignRoleResponse\x12U\n\nRevokeRole\x12".chatto.admin.v1.RevokeRoleRequest\x1a#.chatto.admin.v1.RevokeRoleResponse\x12m\n\x12ChangeUserPassword\x12*.chatto.admin.v1.ChangeUserPasswordRequest\x1a+.chatto.admin.v1.ChangeUserPasswordResponse\x12v\n\x15ClearUsernameCooldown\x12-.chatto.admin.v1.ClearUsernameCooldownRequest\x1a..chatto.admin.v1.ClearUsernameCooldownResponse\x12U\n\nDeleteUser\x12".chatto.admin.v1.DeleteUserRequest\x1a#.chatto.admin.v1.DeleteUserResponseB\x81\x01\n\x13com.chatto.admin.v1B\x0cMembersProtoP\x01\xa2\x02\x03CAX\xaa\x02\x0fChatto.Admin.V1\xca\x02\x0fChatto\\Admin\\V1\xe2\x02\x1bChatto\\Admin\\V1\\GPBMetadata\xea\x02\x11Chatto::Admin::V1b\x06proto3',
     [
-        field_mask_pb.desc(),
         validate_pb.desc(),
         pagination_pb.desc(),
         roles_pb_.desc(),
@@ -850,8 +748,6 @@ _DESC = file_desc(
         "AssignRoleResponse": AssignRoleResponse,
         "RevokeRoleRequest": RevokeRoleRequest,
         "RevokeRoleResponse": RevokeRoleResponse,
-        "UpdateUserRequest": UpdateUserRequest,
-        "UpdateUserResponse": UpdateUserResponse,
         "ChangeUserPasswordRequest": ChangeUserPasswordRequest,
         "ChangeUserPasswordResponse": ChangeUserPasswordResponse,
         "ClearUsernameCooldownRequest": ClearUsernameCooldownRequest,

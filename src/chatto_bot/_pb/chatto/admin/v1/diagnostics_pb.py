@@ -37,7 +37,7 @@ class GetSystemInfoRequest(Message[_GetSystemInfoRequestFields]):
         ) -> None:
             pass
 
-_GetSystemInfoResponseFields: TypeAlias = Literal["system_info", "projections", "asset_cleanup", "durable_workers", "projections_available"]
+_GetSystemInfoResponseFields: TypeAlias = Literal["system_info", "projections", "asset_cleanup", "durable_workers", "projections_available", "livekit"]
 
 class GetSystemInfoResponse(Message[_GetSystemInfoResponseFields]):
     """
@@ -78,9 +78,15 @@ class GetSystemInfoResponse(Message[_GetSystemInfoResponseFields]):
             ```proto
             optional bool projections_available = 5;
             ```
+        livekit:
+            LiveKit voice and video call setup diagnostics.
+
+            ```proto
+            optional chatto.admin.v1.AdminLiveKitStatus livekit = 6;
+            ```
     """
 
-    __slots__ = ("system_info", "projections", "asset_cleanup", "durable_workers", "projections_available")
+    __slots__ = ("system_info", "projections", "asset_cleanup", "durable_workers", "projections_available", "livekit")
 
     if TYPE_CHECKING:
 
@@ -92,6 +98,7 @@ class GetSystemInfoResponse(Message[_GetSystemInfoResponseFields]):
             asset_cleanup: AdminAssetCleanupStatus | None = None,
             durable_workers: list[AdminDurableWorkerStatus] | None = None,
             projections_available: bool | None = None,
+            livekit: AdminLiveKitStatus | None = None,
         ) -> None:
             pass
 
@@ -100,6 +107,126 @@ class GetSystemInfoResponse(Message[_GetSystemInfoResponseFields]):
         asset_cleanup: AdminAssetCleanupStatus | None
         durable_workers: list[AdminDurableWorkerStatus]
         projections_available: bool
+        livekit: AdminLiveKitStatus | None
+
+_AdminLiveKitStatusFields: TypeAlias = Literal["enabled", "configured", "url", "api_key", "separate_webhook_key", "webhook_url", "connection_state", "connection_error", "insecure_url", "last_webhook_at", "last_rejected_webhook_at"]
+
+class AdminLiveKitStatus(Message[_AdminLiveKitStatusFields]):
+    """
+    LiveKit voice and video call setup as seen by the Chatto server that
+    handled the request. The response never includes the API secret or the
+    webhook signing secret.
+
+    Chatto calls the LiveKit server API once for each request to check
+    reachability and credentials. Webhook times come from the memory of the
+    Chatto server that handled the request. They reset when that server
+    restarts, and other servers in a cluster keep their own times.
+
+    ```proto
+    message chatto.admin.v1.AdminLiveKitStatus
+    ```
+
+    Attributes:
+        enabled:
+            Whether `livekit.enabled` is set.
+
+            ```proto
+            bool enabled = 1;
+            ```
+        configured:
+            Whether LiveKit is enabled and the URL, API key, and API secret are all set.
+
+            ```proto
+            bool configured = 2;
+            ```
+        url:
+            Configured LiveKit server URL that clients connect to.
+
+            ```proto
+            string url = 3;
+            ```
+        api_key:
+            Configured LiveKit API key. This is an identifier, not a secret.
+
+            ```proto
+            string api_key = 4;
+            ```
+        separate_webhook_key:
+            Whether webhooks use a signing key that differs from `api_key`.
+
+            ```proto
+            bool separate_webhook_key = 5;
+            ```
+        webhook_url:
+            URL that LiveKit must send webhooks to. Empty when the public server URL is not set.
+
+            ```proto
+            string webhook_url = 6;
+            ```
+        connection_state:
+            Result of the LiveKit server API check.
+
+            ```proto
+            chatto.admin.v1.AdminLiveKitConnectionState connection_state = 7;
+            ```
+        connection_error:
+            Error detail when the check fails. Never contains secrets.
+
+            ```proto
+            string connection_error = 8;
+            ```
+        insecure_url:
+            True when `url` uses unencrypted `ws://` or `http://` and the public server URL host is not a loopback address or a `.localhost` name.
+
+            ```proto
+            bool insecure_url = 9;
+            ```
+        last_webhook_at:
+            Time of the last webhook with a valid signature that this server received.
+
+            ```proto
+            optional google.protobuf.Timestamp last_webhook_at = 10;
+            ```
+        last_rejected_webhook_at:
+            Time of the last webhook that this server rejected because of an invalid signature.
+
+            ```proto
+            optional google.protobuf.Timestamp last_rejected_webhook_at = 11;
+            ```
+    """
+
+    __slots__ = ("enabled", "configured", "url", "api_key", "separate_webhook_key", "webhook_url", "connection_state", "connection_error", "insecure_url", "last_webhook_at", "last_rejected_webhook_at")
+
+    if TYPE_CHECKING:
+
+        def __init__(
+            self,
+            *,
+            enabled: bool = False,
+            configured: bool = False,
+            url: str = "",
+            api_key: str = "",
+            separate_webhook_key: bool = False,
+            webhook_url: str = "",
+            connection_state: AdminLiveKitConnectionState | None = None,
+            connection_error: str = "",
+            insecure_url: bool = False,
+            last_webhook_at: Timestamp | None = None,
+            last_rejected_webhook_at: Timestamp | None = None,
+        ) -> None:
+            pass
+
+        enabled: bool
+        configured: bool
+        url: str
+        api_key: str
+        separate_webhook_key: bool
+        webhook_url: str
+        connection_state: AdminLiveKitConnectionState
+        connection_error: str
+        insecure_url: bool
+        last_webhook_at: Timestamp | None
+        last_rejected_webhook_at: Timestamp | None
 
 _AdminDurableWorkerStatusFields: TypeAlias = Literal["key", "health", "pending_count", "ack_pending_count", "waiting_count", "redelivered_count", "last_delivered_sequence", "ack_floor_sequence"]
 
@@ -1093,6 +1220,60 @@ class AdminProjectionMetric(Message[_AdminProjectionMetricFields]):
         value: int
         bytes: int
 
+class AdminLiveKitConnectionState(Enum):
+    """
+    Result of the LiveKit server API check.
+
+    ```proto
+    enum chatto.admin.v1.AdminLiveKitConnectionState
+    ```
+
+    Attributes:
+        UNSPECIFIED:
+            Unknown state.
+
+            ```proto
+            ADMIN_LIVE_KIT_CONNECTION_STATE_UNSPECIFIED = 0
+            ```
+        NOT_CONFIGURED:
+            LiveKit is not configured, so Chatto did not do the check.
+
+            ```proto
+            ADMIN_LIVE_KIT_CONNECTION_STATE_NOT_CONFIGURED = 1
+            ```
+        OK:
+            LiveKit accepted the API call with the configured key and secret.
+
+            ```proto
+            ADMIN_LIVE_KIT_CONNECTION_STATE_OK = 2
+            ```
+        UNREACHABLE:
+            Chatto could not connect to the LiveKit server URL.
+
+            ```proto
+            ADMIN_LIVE_KIT_CONNECTION_STATE_UNREACHABLE = 3
+            ```
+        UNAUTHORIZED:
+            LiveKit rejected the configured API key or secret.
+
+            ```proto
+            ADMIN_LIVE_KIT_CONNECTION_STATE_UNAUTHORIZED = 4
+            ```
+        ERROR:
+            The server at the URL replied with an unexpected error.
+
+            ```proto
+            ADMIN_LIVE_KIT_CONNECTION_STATE_ERROR = 5
+            ```
+    """
+
+    UNSPECIFIED = 0
+    NOT_CONFIGURED = 1
+    OK = 2
+    UNREACHABLE = 3
+    UNAUTHORIZED = 4
+    ERROR = 5
+
 class AdminDurableWorkerHealth(Enum):
     """
     Operator-facing state derived from a durable consumer.
@@ -1204,13 +1385,14 @@ class AdminAssetCleanupHealth(Enum):
 
 
 _DESC = file_desc(
-    b'\n!chatto/admin/v1/diagnostics.proto\x12\x0fchatto.admin.v1\x1a\x1fgoogle/protobuf/timestamp.proto"\x16\n\x14GetSystemInfoRequest"\x9a\x03\n\x15GetSystemInfoResponse\x12A\n\x0bsystem_info\x18\x01 \x01(\x0b2 .chatto.admin.v1.AdminSystemInfoR\nsystemInfo\x12G\n\x0bprojections\x18\x02 \x03(\x0b2%.chatto.admin.v1.AdminProjectionStateR\x0bprojections\x12M\n\rasset_cleanup\x18\x03 \x01(\x0b2(.chatto.admin.v1.AdminAssetCleanupStatusR\x0cassetCleanup\x12R\n\x0fdurable_workers\x18\x04 \x03(\x0b2).chatto.admin.v1.AdminDurableWorkerStatusR\x0edurableWorkers\x128\n\x15projections_available\x18\x05 \x01(\x08H\x00R\x14projectionsAvailable\x88\x01\x01B\x18\n\x16_projections_available"\xf8\x02\n\x18AdminDurableWorkerStatus\x12\x10\n\x03key\x18\x01 \x01(\tR\x03key\x12A\n\x06health\x18\x02 \x01(\x0e2).chatto.admin.v1.AdminDurableWorkerHealthR\x06health\x12#\n\rpending_count\x18\x03 \x01(\tR\x0cpendingCount\x12*\n\x11ack_pending_count\x18\x04 \x01(\tR\x0fackPendingCount\x12#\n\rwaiting_count\x18\x05 \x01(\tR\x0cwaitingCount\x12+\n\x11redelivered_count\x18\x06 \x01(\tR\x10redeliveredCount\x126\n\x17last_delivered_sequence\x18\x07 \x01(\tR\x15lastDeliveredSequence\x12,\n\x12ack_floor_sequence\x18\x08 \x01(\tR\x10ackFloorSequence"\xf2\x04\n\x17AdminAssetCleanupStatus\x12@\n\x06health\x18\x01 \x01(\x0e2(.chatto.admin.v1.AdminAssetCleanupHealthR\x06health\x12#\n\rpending_count\x18\x02 \x01(\x03R\x0cpendingCount\x12J\n\x11oldest_pending_at\x18\x03 \x01(\x0b2\x1a.google.protobuf.TimestampR\x0foldestPendingAtB\x02\x18\x01\x12,\n\x10pass_in_progress\x18\x04 \x01(\x08R\x0epassInProgressB\x02\x18\x01\x12@\n\x0clast_pass_at\x18\x05 \x01(\x0b2\x1a.google.protobuf.TimestampR\nlastPassAtB\x02\x18\x01\x12U\n\x17last_successful_pass_at\x18\x06 \x01(\x0b2\x1a.google.protobuf.TimestampR\x14lastSuccessfulPassAtB\x02\x18\x01\x12=\n\nupdated_at\x18\x07 \x01(\x0b2\x1a.google.protobuf.TimestampR\tupdatedAtB\x02\x18\x01\x12,\n\x10last_pass_failed\x18\x08 \x01(\x08R\x0elastPassFailedB\x02\x18\x01\x126\n\x17last_inspected_sequence\x18\t \x01(\tR\x15lastInspectedSequence\x128\n\x18latest_deletion_sequence\x18\n \x01(\tR\x16latestDeletionSequence"\x82\x02\n\x0fAdminSystemInfo\x12D\n\nconnection\x18\x01 \x01(\x0b2$.chatto.admin.v1.AdminConnectionInfoR\nconnection\x12;\n\x07account\x18\x02 \x01(\x0b2!.chatto.admin.v1.AdminAccountInfoR\x07account\x123\n\x04nats\x18\x03 \x01(\x0b2\x1f.chatto.admin.v1.AdminNatsStatsR\x04nats\x127\n\x05stats\x18\x04 \x01(\x0b2!.chatto.admin.v1.AdminServerStatsR\x05stats"\xbe\x01\n\x13AdminConnectionInfo\x12\x1c\n\tconnected\x18\x01 \x01(\x08R\tconnected\x12\x1b\n\tserver_id\x18\x02 \x01(\tR\x08serverId\x12\x1f\n\x0bserver_name\x18\x03 \x01(\tR\nserverName\x12\x18\n\x07version\x18\x04 \x01(\tR\x07version\x12\x1f\n\x0bmax_payload\x18\x05 \x01(\x03R\nmaxPayload\x12\x10\n\x03rtt\x18\x06 \x01(\tR\x03rtt"\x8a\x02\n\x10AdminAccountInfo\x12\x16\n\x06memory\x18\x01 \x01(\x03R\x06memory\x12\x1f\n\x0bmemory_used\x18\x02 \x01(\x03R\nmemoryUsed\x12\x18\n\x07storage\x18\x03 \x01(\x03R\x07storage\x12!\n\x0cstorage_used\x18\x04 \x01(\x03R\x0bstorageUsed\x12\x18\n\x07streams\x18\x05 \x01(\x05R\x07streams\x12!\n\x0cstreams_used\x18\x06 \x01(\x05R\x0bstreamsUsed\x12\x1c\n\tconsumers\x18\x07 \x01(\x05R\tconsumers\x12%\n\x0econsumers_used\x18\x08 \x01(\x05R\rconsumersUsed"\x83\x01\n\x10AdminServerStats\x12\x1d\n\nuser_count\x18\x01 \x01(\x05R\tuserCount\x12,\n\x12channel_room_count\x18\x02 \x01(\x05R\x10channelRoomCount\x12"\n\rdm_room_count\x18\x03 \x01(\x05R\x0bdmRoomCount"\xc0\x02\n\x0eAdminNatsStats\x12%\n\x0etotal_messages\x18\x01 \x01(\x03R\rtotalMessages\x12\x1f\n\x0btotal_bytes\x18\x02 \x01(\x03R\ntotalBytes\x124\n\x16total_consumer_pending\x18\x03 \x01(\x03R\x14totalConsumerPending\x12*\n\x11total_ack_pending\x18\x04 \x01(\x05R\x0ftotalAckPending\x12>\n\x07streams\x18\x05 \x03(\x0b2$.chatto.admin.v1.AdminNatsStreamInfoR\x07streams\x12D\n\tconsumers\x18\x06 \x03(\x0b2&.chatto.admin.v1.AdminNatsConsumerInfoR\tconsumers"\xe9\x02\n\x13AdminNatsStreamInfo\x12\x12\n\x04name\x18\x01 \x01(\tR\x04name\x12 \n\x0bdescription\x18\x02 \x01(\tR\x0bdescription\x12\x1a\n\x08subjects\x18\x03 \x03(\tR\x08subjects\x12\x18\n\x07storage\x18\x04 \x01(\tR\x07storage\x12\x1a\n\x08messages\x18\x05 \x01(\x03R\x08messages\x12\x14\n\x05bytes\x18\x06 \x01(\x03R\x05bytes\x12%\n\x0efirst_sequence\x18\x07 \x01(\tR\rfirstSequence\x12#\n\rlast_sequence\x18\x08 \x01(\tR\x0clastSequence\x12%\n\x0econsumer_count\x18\t \x01(\x05R\rconsumerCount\x12\x1a\n\x08replicas\x18\n \x01(\x05R\x08replicas\x12%\n\x0ecluster_leader\x18\x0b \x01(\tR\rclusterLeader"\xf7\x04\n\x15AdminNatsConsumerInfo\x12\x16\n\x06stream\x18\x01 \x01(\tR\x06stream\x12\x12\n\x04name\x18\x02 \x01(\tR\x04name\x12\x18\n\x07durable\x18\x03 \x01(\tR\x07durable\x12%\n\x0efilter_subject\x18\x04 \x01(\tR\rfilterSubject\x12\'\n\x0ffilter_subjects\x18\x05 \x03(\tR\x0efilterSubjects\x12\x1d\n\nack_policy\x18\x06 \x01(\tR\tackPolicy\x12\x1d\n\npull_based\x18\x07 \x01(\x08R\tpullBased\x12\x1d\n\npush_bound\x18\x08 \x01(\x08R\tpushBound\x12\x18\n\x07pending\x18\t \x01(\x03R\x07pending\x12\x1f\n\x0back_pending\x18\n \x01(\x05R\nackPending\x12 \n\x0bredelivered\x18\x0b \x01(\x05R\x0bredelivered\x12\x18\n\x07waiting\x18\x0c \x01(\x05R\x07waiting\x12>\n\x1bdelivered_consumer_sequence\x18\r \x01(\tR\x19deliveredConsumerSequence\x12:\n\x19delivered_stream_sequence\x18\x0e \x01(\tR\x17deliveredStreamSequence\x12=\n\x1back_floor_consumer_sequence\x18\x0f \x01(\tR\x18ackFloorConsumerSequence\x129\n\x19ack_floor_stream_sequence\x18\x10 \x01(\tR\x16ackFloorStreamSequence"\x97\x05\n\x14AdminProjectionState\x12\x10\n\x03key\x18\x01 \x01(\tR\x03key\x12\x12\n\x04name\x18\x02 \x01(\tR\x04name\x12\x1a\n\x08subjects\x18\x03 \x03(\tR\x08subjects\x12\x18\n\x07started\x18\x04 \x01(\x08R\x07started\x12=\n\x18startup_duration_seconds\x18\x05 \x01(\x01H\x00R\x16startupDurationSeconds\x88\x01\x01\x122\n\x15last_applied_sequence\x18\x06 \x01(\tR\x13lastAppliedSequence\x128\n\x18matching_stream_sequence\x18\x07 \x01(\tR\x16matchingStreamSequence\x120\n\x14stream_last_sequence\x18\x08 \x01(\tR\x12streamLastSequence\x12\x10\n\x03lag\x18\t \x01(\x03R\x03lag\x12\x16\n\x06failed\x18\n \x01(\x08R\x06failed\x12\'\n\x0ffailed_sequence\x18\x0b \x01(\tR\x0efailedSequence\x12\x18\n\x07failure\x18\x0c \x01(\tR\x07failure\x12\x1f\n\x0bentry_count\x18\r \x01(\x03R\nentryCount\x12\'\n\x0festimated_bytes\x18\x0e \x01(\x03R\x0eestimatedBytes\x12.\n\x13average_entry_bytes\x18\x0f \x01(\x03R\x11averageEntryBytes\x12@\n\x07metrics\x18\x10 \x03(\x0b2&.chatto.admin.v1.AdminProjectionMetricR\x07metricsB\x1b\n\x19_startup_duration_seconds"W\n\x15AdminProjectionMetric\x12\x12\n\x04name\x18\x01 \x01(\tR\x04name\x12\x14\n\x05value\x18\x02 \x01(\x03R\x05value\x12\x14\n\x05bytes\x18\x03 \x01(\x03R\x05bytes*\xc6\x02\n\x18AdminDurableWorkerHealth\x12+\n\'ADMIN_DURABLE_WORKER_HEALTH_UNSPECIFIED\x10\x00\x12(\n$ADMIN_DURABLE_WORKER_HEALTH_INACTIVE\x10\x01\x12\'\n#ADMIN_DURABLE_WORKER_HEALTH_HEALTHY\x10\x02\x12\'\n#ADMIN_DURABLE_WORKER_HEALTH_WORKING\x10\x03\x12+\n\'ADMIN_DURABLE_WORKER_HEALTH_UNCONFIRMED\x10\x04\x12\'\n#ADMIN_DURABLE_WORKER_HEALTH_STALLED\x10\x05\x12+\n\'ADMIN_DURABLE_WORKER_HEALTH_UNAVAILABLE\x10\x06*\xc0\x02\n\x17AdminAssetCleanupHealth\x12*\n&ADMIN_ASSET_CLEANUP_HEALTH_UNSPECIFIED\x10\x00\x12\'\n#ADMIN_ASSET_CLEANUP_HEALTH_INACTIVE\x10\x01\x12+\n\'ADMIN_ASSET_CLEANUP_HEALTH_INITIALIZING\x10\x02\x12&\n"ADMIN_ASSET_CLEANUP_HEALTH_HEALTHY\x10\x03\x12\'\n#ADMIN_ASSET_CLEANUP_HEALTH_RETRYING\x10\x04\x12&\n"ADMIN_ASSET_CLEANUP_HEALTH_STALLED\x10\x05\x12*\n&ADMIN_ASSET_CLEANUP_HEALTH_UNAVAILABLE\x10\x062y\n\x17AdminDiagnosticsService\x12^\n\rGetSystemInfo\x12%.chatto.admin.v1.GetSystemInfoRequest\x1a&.chatto.admin.v1.GetSystemInfoResponseB\x85\x01\n\x13com.chatto.admin.v1B\x10DiagnosticsProtoP\x01\xa2\x02\x03CAX\xaa\x02\x0fChatto.Admin.V1\xca\x02\x0fChatto\\Admin\\V1\xe2\x02\x1bChatto\\Admin\\V1\\GPBMetadata\xea\x02\x11Chatto::Admin::V1b\x06proto3',
+    b'\n!chatto/admin/v1/diagnostics.proto\x12\x0fchatto.admin.v1\x1a\x1fgoogle/protobuf/timestamp.proto"\x16\n\x14GetSystemInfoRequest"\xd9\x03\n\x15GetSystemInfoResponse\x12A\n\x0bsystem_info\x18\x01 \x01(\x0b2 .chatto.admin.v1.AdminSystemInfoR\nsystemInfo\x12G\n\x0bprojections\x18\x02 \x03(\x0b2%.chatto.admin.v1.AdminProjectionStateR\x0bprojections\x12M\n\rasset_cleanup\x18\x03 \x01(\x0b2(.chatto.admin.v1.AdminAssetCleanupStatusR\x0cassetCleanup\x12R\n\x0fdurable_workers\x18\x04 \x03(\x0b2).chatto.admin.v1.AdminDurableWorkerStatusR\x0edurableWorkers\x128\n\x15projections_available\x18\x05 \x01(\x08H\x00R\x14projectionsAvailable\x88\x01\x01\x12=\n\x07livekit\x18\x06 \x01(\x0b2#.chatto.admin.v1.AdminLiveKitStatusR\x07livekitB\x18\n\x16_projections_available"\x8c\x04\n\x12AdminLiveKitStatus\x12\x18\n\x07enabled\x18\x01 \x01(\x08R\x07enabled\x12\x1e\n\nconfigured\x18\x02 \x01(\x08R\nconfigured\x12\x10\n\x03url\x18\x03 \x01(\tR\x03url\x12\x17\n\x07api_key\x18\x04 \x01(\tR\x06apiKey\x120\n\x14separate_webhook_key\x18\x05 \x01(\x08R\x12separateWebhookKey\x12\x1f\n\x0bwebhook_url\x18\x06 \x01(\tR\nwebhookUrl\x12W\n\x10connection_state\x18\x07 \x01(\x0e2,.chatto.admin.v1.AdminLiveKitConnectionStateR\x0fconnectionState\x12)\n\x10connection_error\x18\x08 \x01(\tR\x0fconnectionError\x12!\n\x0cinsecure_url\x18\t \x01(\x08R\x0binsecureUrl\x12B\n\x0flast_webhook_at\x18\n \x01(\x0b2\x1a.google.protobuf.TimestampR\rlastWebhookAt\x12S\n\x18last_rejected_webhook_at\x18\x0b \x01(\x0b2\x1a.google.protobuf.TimestampR\x15lastRejectedWebhookAt"\xf8\x02\n\x18AdminDurableWorkerStatus\x12\x10\n\x03key\x18\x01 \x01(\tR\x03key\x12A\n\x06health\x18\x02 \x01(\x0e2).chatto.admin.v1.AdminDurableWorkerHealthR\x06health\x12#\n\rpending_count\x18\x03 \x01(\tR\x0cpendingCount\x12*\n\x11ack_pending_count\x18\x04 \x01(\tR\x0fackPendingCount\x12#\n\rwaiting_count\x18\x05 \x01(\tR\x0cwaitingCount\x12+\n\x11redelivered_count\x18\x06 \x01(\tR\x10redeliveredCount\x126\n\x17last_delivered_sequence\x18\x07 \x01(\tR\x15lastDeliveredSequence\x12,\n\x12ack_floor_sequence\x18\x08 \x01(\tR\x10ackFloorSequence"\xf2\x04\n\x17AdminAssetCleanupStatus\x12@\n\x06health\x18\x01 \x01(\x0e2(.chatto.admin.v1.AdminAssetCleanupHealthR\x06health\x12#\n\rpending_count\x18\x02 \x01(\x03R\x0cpendingCount\x12J\n\x11oldest_pending_at\x18\x03 \x01(\x0b2\x1a.google.protobuf.TimestampR\x0foldestPendingAtB\x02\x18\x01\x12,\n\x10pass_in_progress\x18\x04 \x01(\x08R\x0epassInProgressB\x02\x18\x01\x12@\n\x0clast_pass_at\x18\x05 \x01(\x0b2\x1a.google.protobuf.TimestampR\nlastPassAtB\x02\x18\x01\x12U\n\x17last_successful_pass_at\x18\x06 \x01(\x0b2\x1a.google.protobuf.TimestampR\x14lastSuccessfulPassAtB\x02\x18\x01\x12=\n\nupdated_at\x18\x07 \x01(\x0b2\x1a.google.protobuf.TimestampR\tupdatedAtB\x02\x18\x01\x12,\n\x10last_pass_failed\x18\x08 \x01(\x08R\x0elastPassFailedB\x02\x18\x01\x126\n\x17last_inspected_sequence\x18\t \x01(\tR\x15lastInspectedSequence\x128\n\x18latest_deletion_sequence\x18\n \x01(\tR\x16latestDeletionSequence"\x82\x02\n\x0fAdminSystemInfo\x12D\n\nconnection\x18\x01 \x01(\x0b2$.chatto.admin.v1.AdminConnectionInfoR\nconnection\x12;\n\x07account\x18\x02 \x01(\x0b2!.chatto.admin.v1.AdminAccountInfoR\x07account\x123\n\x04nats\x18\x03 \x01(\x0b2\x1f.chatto.admin.v1.AdminNatsStatsR\x04nats\x127\n\x05stats\x18\x04 \x01(\x0b2!.chatto.admin.v1.AdminServerStatsR\x05stats"\xbe\x01\n\x13AdminConnectionInfo\x12\x1c\n\tconnected\x18\x01 \x01(\x08R\tconnected\x12\x1b\n\tserver_id\x18\x02 \x01(\tR\x08serverId\x12\x1f\n\x0bserver_name\x18\x03 \x01(\tR\nserverName\x12\x18\n\x07version\x18\x04 \x01(\tR\x07version\x12\x1f\n\x0bmax_payload\x18\x05 \x01(\x03R\nmaxPayload\x12\x10\n\x03rtt\x18\x06 \x01(\tR\x03rtt"\x8a\x02\n\x10AdminAccountInfo\x12\x16\n\x06memory\x18\x01 \x01(\x03R\x06memory\x12\x1f\n\x0bmemory_used\x18\x02 \x01(\x03R\nmemoryUsed\x12\x18\n\x07storage\x18\x03 \x01(\x03R\x07storage\x12!\n\x0cstorage_used\x18\x04 \x01(\x03R\x0bstorageUsed\x12\x18\n\x07streams\x18\x05 \x01(\x05R\x07streams\x12!\n\x0cstreams_used\x18\x06 \x01(\x05R\x0bstreamsUsed\x12\x1c\n\tconsumers\x18\x07 \x01(\x05R\tconsumers\x12%\n\x0econsumers_used\x18\x08 \x01(\x05R\rconsumersUsed"\x83\x01\n\x10AdminServerStats\x12\x1d\n\nuser_count\x18\x01 \x01(\x05R\tuserCount\x12,\n\x12channel_room_count\x18\x02 \x01(\x05R\x10channelRoomCount\x12"\n\rdm_room_count\x18\x03 \x01(\x05R\x0bdmRoomCount"\xc0\x02\n\x0eAdminNatsStats\x12%\n\x0etotal_messages\x18\x01 \x01(\x03R\rtotalMessages\x12\x1f\n\x0btotal_bytes\x18\x02 \x01(\x03R\ntotalBytes\x124\n\x16total_consumer_pending\x18\x03 \x01(\x03R\x14totalConsumerPending\x12*\n\x11total_ack_pending\x18\x04 \x01(\x05R\x0ftotalAckPending\x12>\n\x07streams\x18\x05 \x03(\x0b2$.chatto.admin.v1.AdminNatsStreamInfoR\x07streams\x12D\n\tconsumers\x18\x06 \x03(\x0b2&.chatto.admin.v1.AdminNatsConsumerInfoR\tconsumers"\xe9\x02\n\x13AdminNatsStreamInfo\x12\x12\n\x04name\x18\x01 \x01(\tR\x04name\x12 \n\x0bdescription\x18\x02 \x01(\tR\x0bdescription\x12\x1a\n\x08subjects\x18\x03 \x03(\tR\x08subjects\x12\x18\n\x07storage\x18\x04 \x01(\tR\x07storage\x12\x1a\n\x08messages\x18\x05 \x01(\x03R\x08messages\x12\x14\n\x05bytes\x18\x06 \x01(\x03R\x05bytes\x12%\n\x0efirst_sequence\x18\x07 \x01(\tR\rfirstSequence\x12#\n\rlast_sequence\x18\x08 \x01(\tR\x0clastSequence\x12%\n\x0econsumer_count\x18\t \x01(\x05R\rconsumerCount\x12\x1a\n\x08replicas\x18\n \x01(\x05R\x08replicas\x12%\n\x0ecluster_leader\x18\x0b \x01(\tR\rclusterLeader"\xf7\x04\n\x15AdminNatsConsumerInfo\x12\x16\n\x06stream\x18\x01 \x01(\tR\x06stream\x12\x12\n\x04name\x18\x02 \x01(\tR\x04name\x12\x18\n\x07durable\x18\x03 \x01(\tR\x07durable\x12%\n\x0efilter_subject\x18\x04 \x01(\tR\rfilterSubject\x12\'\n\x0ffilter_subjects\x18\x05 \x03(\tR\x0efilterSubjects\x12\x1d\n\nack_policy\x18\x06 \x01(\tR\tackPolicy\x12\x1d\n\npull_based\x18\x07 \x01(\x08R\tpullBased\x12\x1d\n\npush_bound\x18\x08 \x01(\x08R\tpushBound\x12\x18\n\x07pending\x18\t \x01(\x03R\x07pending\x12\x1f\n\x0back_pending\x18\n \x01(\x05R\nackPending\x12 \n\x0bredelivered\x18\x0b \x01(\x05R\x0bredelivered\x12\x18\n\x07waiting\x18\x0c \x01(\x05R\x07waiting\x12>\n\x1bdelivered_consumer_sequence\x18\r \x01(\tR\x19deliveredConsumerSequence\x12:\n\x19delivered_stream_sequence\x18\x0e \x01(\tR\x17deliveredStreamSequence\x12=\n\x1back_floor_consumer_sequence\x18\x0f \x01(\tR\x18ackFloorConsumerSequence\x129\n\x19ack_floor_stream_sequence\x18\x10 \x01(\tR\x16ackFloorStreamSequence"\x97\x05\n\x14AdminProjectionState\x12\x10\n\x03key\x18\x01 \x01(\tR\x03key\x12\x12\n\x04name\x18\x02 \x01(\tR\x04name\x12\x1a\n\x08subjects\x18\x03 \x03(\tR\x08subjects\x12\x18\n\x07started\x18\x04 \x01(\x08R\x07started\x12=\n\x18startup_duration_seconds\x18\x05 \x01(\x01H\x00R\x16startupDurationSeconds\x88\x01\x01\x122\n\x15last_applied_sequence\x18\x06 \x01(\tR\x13lastAppliedSequence\x128\n\x18matching_stream_sequence\x18\x07 \x01(\tR\x16matchingStreamSequence\x120\n\x14stream_last_sequence\x18\x08 \x01(\tR\x12streamLastSequence\x12\x10\n\x03lag\x18\t \x01(\x03R\x03lag\x12\x16\n\x06failed\x18\n \x01(\x08R\x06failed\x12\'\n\x0ffailed_sequence\x18\x0b \x01(\tR\x0efailedSequence\x12\x18\n\x07failure\x18\x0c \x01(\tR\x07failure\x12\x1f\n\x0bentry_count\x18\r \x01(\x03R\nentryCount\x12\'\n\x0festimated_bytes\x18\x0e \x01(\x03R\x0eestimatedBytes\x12.\n\x13average_entry_bytes\x18\x0f \x01(\x03R\x11averageEntryBytes\x12@\n\x07metrics\x18\x10 \x03(\x0b2&.chatto.admin.v1.AdminProjectionMetricR\x07metricsB\x1b\n\x19_startup_duration_seconds"W\n\x15AdminProjectionMetric\x12\x12\n\x04name\x18\x01 \x01(\tR\x04name\x12\x14\n\x05value\x18\x02 \x01(\x03R\x05value\x12\x14\n\x05bytes\x18\x03 \x01(\x03R\x05bytes*\xb8\x02\n\x1bAdminLiveKitConnectionState\x12/\n+ADMIN_LIVE_KIT_CONNECTION_STATE_UNSPECIFIED\x10\x00\x122\n.ADMIN_LIVE_KIT_CONNECTION_STATE_NOT_CONFIGURED\x10\x01\x12&\n"ADMIN_LIVE_KIT_CONNECTION_STATE_OK\x10\x02\x12/\n+ADMIN_LIVE_KIT_CONNECTION_STATE_UNREACHABLE\x10\x03\x120\n,ADMIN_LIVE_KIT_CONNECTION_STATE_UNAUTHORIZED\x10\x04\x12)\n%ADMIN_LIVE_KIT_CONNECTION_STATE_ERROR\x10\x05*\xc6\x02\n\x18AdminDurableWorkerHealth\x12+\n\'ADMIN_DURABLE_WORKER_HEALTH_UNSPECIFIED\x10\x00\x12(\n$ADMIN_DURABLE_WORKER_HEALTH_INACTIVE\x10\x01\x12\'\n#ADMIN_DURABLE_WORKER_HEALTH_HEALTHY\x10\x02\x12\'\n#ADMIN_DURABLE_WORKER_HEALTH_WORKING\x10\x03\x12+\n\'ADMIN_DURABLE_WORKER_HEALTH_UNCONFIRMED\x10\x04\x12\'\n#ADMIN_DURABLE_WORKER_HEALTH_STALLED\x10\x05\x12+\n\'ADMIN_DURABLE_WORKER_HEALTH_UNAVAILABLE\x10\x06*\xc0\x02\n\x17AdminAssetCleanupHealth\x12*\n&ADMIN_ASSET_CLEANUP_HEALTH_UNSPECIFIED\x10\x00\x12\'\n#ADMIN_ASSET_CLEANUP_HEALTH_INACTIVE\x10\x01\x12+\n\'ADMIN_ASSET_CLEANUP_HEALTH_INITIALIZING\x10\x02\x12&\n"ADMIN_ASSET_CLEANUP_HEALTH_HEALTHY\x10\x03\x12\'\n#ADMIN_ASSET_CLEANUP_HEALTH_RETRYING\x10\x04\x12&\n"ADMIN_ASSET_CLEANUP_HEALTH_STALLED\x10\x05\x12*\n&ADMIN_ASSET_CLEANUP_HEALTH_UNAVAILABLE\x10\x062y\n\x17AdminDiagnosticsService\x12^\n\rGetSystemInfo\x12%.chatto.admin.v1.GetSystemInfoRequest\x1a&.chatto.admin.v1.GetSystemInfoResponseB\x85\x01\n\x13com.chatto.admin.v1B\x10DiagnosticsProtoP\x01\xa2\x02\x03CAX\xaa\x02\x0fChatto.Admin.V1\xca\x02\x0fChatto\\Admin\\V1\xe2\x02\x1bChatto\\Admin\\V1\\GPBMetadata\xea\x02\x11Chatto::Admin::V1b\x06proto3',
     [
         timestamp_pb.desc(),
     ],
     {
         "GetSystemInfoRequest": GetSystemInfoRequest,
         "GetSystemInfoResponse": GetSystemInfoResponse,
+        "AdminLiveKitStatus": AdminLiveKitStatus,
         "AdminDurableWorkerStatus": AdminDurableWorkerStatus,
         "AdminAssetCleanupStatus": AdminAssetCleanupStatus,
         "AdminSystemInfo": AdminSystemInfo,
@@ -1222,6 +1404,7 @@ _DESC = file_desc(
         "AdminNatsConsumerInfo": AdminNatsConsumerInfo,
         "AdminProjectionState": AdminProjectionState,
         "AdminProjectionMetric": AdminProjectionMetric,
+        "AdminLiveKitConnectionState": AdminLiveKitConnectionState,
         "AdminDurableWorkerHealth": AdminDurableWorkerHealth,
         "AdminAssetCleanupHealth": AdminAssetCleanupHealth,
     },

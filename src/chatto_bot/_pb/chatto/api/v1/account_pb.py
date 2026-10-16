@@ -23,101 +23,6 @@ if TYPE_CHECKING:
     from .viewer_pb import TimeFormat, UserSettings
 
 
-_UpdateProfileRequestFields: TypeAlias = Literal["display_name", "login", "bio", "update_mask"]
-
-class UpdateProfileRequest(Message[_UpdateProfileRequestFields]):
-    """
-    Request to update the authenticated user's profile. Human and bot accounts
-    use this same self-service operation. update_mask selects fields to apply
-    or reset. Fields outside the mask stay unchanged.
-
-    ```proto
-    message chatto.api.v1.UpdateProfileRequest
-    ```
-
-    Attributes:
-        display_name:
-            New non-empty display name. The server also rejects control and
-            confusing invisible characters.
-
-            ```proto
-            optional string display_name = 1;
-            ```
-        login:
-            New login identifier, when changing it. The server accepts ASCII letters,
-            digits, period, underscore, and hyphen, starting with a letter or digit.
-
-            ```proto
-            optional string login = 2;
-            ```
-        bio:
-            New Markdown biography, when changing it. Empty clears the bio.
-
-            ```proto
-            optional string bio = 3;
-            ```
-        update_mask:
-            Editable fields to apply or reset: display_name, login, bio.
-            Omit to infer populated fields; * selects all editable fields. An explicit
-            empty mask is invalid. Unselected values are ignored. Selected absent values
-            reset the field to its default, subject to field validation.
-
-            ```proto
-            optional google.protobuf.FieldMask update_mask = 4;
-            ```
-    """
-
-    __slots__ = ("display_name", "login", "bio", "update_mask")
-
-    if TYPE_CHECKING:
-
-        def __init__(
-            self,
-            *,
-            display_name: str | None = None,
-            login: str | None = None,
-            bio: str | None = None,
-            update_mask: FieldMask | None = None,
-        ) -> None:
-            pass
-
-        display_name: str
-        login: str
-        bio: str
-        update_mask: FieldMask | None
-
-_UpdateProfileResponseFields: TypeAlias = Literal["user"]
-
-class UpdateProfileResponse(Message[_UpdateProfileResponseFields]):
-    """
-    Result of a profile update.
-
-    ```proto
-    message chatto.api.v1.UpdateProfileResponse
-    ```
-
-    Attributes:
-        user:
-            Updated user profile.
-
-            ```proto
-            optional chatto.api.v1.User user = 1;
-            ```
-    """
-
-    __slots__ = ("user",)
-
-    if TYPE_CHECKING:
-
-        def __init__(
-            self,
-            *,
-            user: User | None = None,
-        ) -> None:
-            pass
-
-        user: User | None
-
 _ChangePasswordRequestFields: TypeAlias = Literal["password", "current_password"]
 
 class ChangePasswordRequest(Message[_ChangePasswordRequestFields]):
@@ -764,7 +669,7 @@ class DeleteMyAccountResponse(Message[_DeleteMyAccountResponseFields]):
 
 
 _DESC = file_desc(
-    b'\n\x1bchatto/api/v1/account.proto\x12\rchatto.api.v1\x1a google/protobuf/field_mask.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1bbuf/validate/validate.proto\x1a\'chatto/api/v1/external_identities.proto\x1a\x1cchatto/api/v1/presence.proto\x1a\x1fchatto/api/v1/user_status.proto\x1a\x19chatto/api/v1/users.proto\x1a\x1achatto/api/v1/viewer.proto"\xf0\x01\n\x14UpdateProfileRequest\x121\n\x0cdisplay_name\x18\x01 \x01(\tH\x00R\x0bdisplayNameB\t\xbaH\x06r\x04\x10\x01\x18 \x88\x01\x01\x12$\n\x05login\x18\x02 \x01(\tH\x01R\x05loginB\t\xbaH\x06r\x04\x10\x02\x18 \x88\x01\x01\x12\x1f\n\x03bio\x18\x03 \x01(\tH\x02R\x03bioB\x08\xbaH\x05r\x03\x18\xe8\x07\x88\x01\x01\x12;\n\x0bupdate_mask\x18\x04 \x01(\x0b2\x1a.google.protobuf.FieldMaskR\nupdateMaskB\x0f\n\r_display_nameB\x08\n\x06_loginB\x06\n\x04_bio"@\n\x15UpdateProfileResponse\x12\'\n\x04user\x18\x01 \x01(\x0b2\x13.chatto.api.v1.UserR\x04user"t\n\x15ChangePasswordRequest\x12&\n\x08password\x18\x01 \x01(\tR\x08passwordB\n\xbaH\x07r\x05\x10\x08\x18\x80\x01\x123\n\x10current_password\x18\x02 \x01(\tR\x0fcurrentPasswordB\x08\xbaH\x05r\x03\x18\x80\x01"A\n\x16ChangePasswordResponse\x12\'\n\x04user\x18\x01 \x01(\x0b2\x13.chatto.api.v1.UserR\x04user"|\n\rVerifiedEmail\x12\x14\n\x05email\x18\x01 \x01(\tR\x05email\x12;\n\x0bverified_at\x18\x02 \x01(\x0b2\x1a.google.protobuf.TimestampR\nverifiedAt\x12\x18\n\x07primary\x18\x03 \x01(\x08R\x07primary"N\n\x19ListVerifiedEmailsRequest\x121\n\x10expected_user_id\x18\x01 \x01(\tR\x0eexpectedUserIdB\x07\xbaH\x04r\x02\x10\x01"c\n\x1aListVerifiedEmailsResponse\x12E\n\x0fverified_emails\x18\x01 \x03(\x0b2\x1c.chatto.api.v1.VerifiedEmailR\x0everifiedEmails"v\n\x1fRequestEmailVerificationRequest\x12 \n\x05email\x18\x01 \x01(\tR\x05emailB\n\xbaH\x07r\x05\x18\xfe\x01`\x01\x121\n\x10expected_user_id\x18\x02 \x01(\tR\x0eexpectedUserIdB\x07\xbaH\x04r\x02\x10\x01""\n RequestEmailVerificationResponse"\x95\x01\n\x1fConfirmEmailVerificationRequest\x12 \n\x05email\x18\x01 \x01(\tR\x05emailB\n\xbaH\x07r\x05\x18\xfe\x01`\x01\x12\x1d\n\x04code\x18\x02 \x01(\tR\x04codeB\t\xbaH\x06r\x04\x10\x01\x18 \x121\n\x10expected_user_id\x18\x03 \x01(\tR\x0eexpectedUserIdB\x07\xbaH\x04r\x02\x10\x01"i\n ConfirmEmailVerificationResponse\x12E\n\x0fverified_emails\x18\x01 \x03(\x0b2\x1c.chatto.api.v1.VerifiedEmailR\x0everifiedEmails"m\n\x16SetPrimaryEmailRequest\x12 \n\x05email\x18\x01 \x01(\tR\x05emailB\n\xbaH\x07r\x05\x18\xfe\x01`\x01\x121\n\x10expected_user_id\x18\x02 \x01(\tR\x0eexpectedUserIdB\x07\xbaH\x04r\x02\x10\x01"`\n\x17SetPrimaryEmailResponse\x12E\n\x0fverified_emails\x18\x01 \x03(\x0b2\x1c.chatto.api.v1.VerifiedEmailR\x0everifiedEmails"\x14\n\x12GetSettingsRequest"N\n\x13GetSettingsResponse\x127\n\x08settings\x18\x01 \x01(\x0b2\x1b.chatto.api.v1.UserSettingsR\x08settings"\x9c\x02\n\x15UpdateSettingsRequest\x12\x1f\n\x08timezone\x18\x01 \x01(\tH\x00R\x08timezone\x88\x01\x01\x12I\n\x0btime_format\x18\x02 \x01(\x0e2\x19.chatto.api.v1.TimeFormatH\x01R\ntimeFormatB\x08\xbaH\x05\x82\x01\x02\x10\x01\x88\x01\x01\x12*\n\x0eshare_timezone\x18\x03 \x01(\x08H\x02R\rshareTimezone\x88\x01\x01\x12;\n\x0bupdate_mask\x18\x04 \x01(\x0b2\x1a.google.protobuf.FieldMaskR\nupdateMaskB\x0b\n\t_timezoneB\x0e\n\x0c_time_formatB\x11\n\x0f_share_timezone"Q\n\x16UpdateSettingsResponse\x127\n\x08settings\x18\x01 \x01(\x0b2\x1b.chatto.api.v1.UserSettingsR\x08settings"\x1f\n\x1dRequestAccountDeletionRequest"O\n\x1eRequestAccountDeletionResponse\x12-\n\x12confirmation_token\x18\x01 \x01(\tR\x11confirmationToken"G\n\x16DeleteMyAccountRequest\x12-\n\x12confirmation_token\x18\x01 \x01(\tR\x11confirmationToken"(\n\x17DeleteMyAccountResponseJ\x04\x08\x01\x10\x02R\x07deleted2\x94\x10\n\x10MyAccountService\x12Z\n\rUpdateProfile\x12#.chatto.api.v1.UpdateProfileRequest\x1a$.chatto.api.v1.UpdateProfileResponse\x12]\n\x0eChangePassword\x12$.chatto.api.v1.ChangePasswordRequest\x1a%.chatto.api.v1.ChangePasswordResponse\x12n\n\x12ListVerifiedEmails\x12(.chatto.api.v1.ListVerifiedEmailsRequest\x1a).chatto.api.v1.ListVerifiedEmailsResponse"\x03\x90\x02\x01\x12{\n\x18RequestEmailVerification\x12..chatto.api.v1.RequestEmailVerificationRequest\x1a/.chatto.api.v1.RequestEmailVerificationResponse\x12{\n\x18ConfirmEmailVerification\x12..chatto.api.v1.ConfirmEmailVerificationRequest\x1a/.chatto.api.v1.ConfirmEmailVerificationResponse\x12`\n\x0fSetPrimaryEmail\x12%.chatto.api.v1.SetPrimaryEmailRequest\x1a&.chatto.api.v1.SetPrimaryEmailResponse\x12T\n\x0bGetSettings\x12!.chatto.api.v1.GetSettingsRequest\x1a".chatto.api.v1.GetSettingsResponse\x12]\n\x0eUpdateSettings\x12$.chatto.api.v1.UpdateSettingsRequest\x1a%.chatto.api.v1.UpdateSettingsResponse\x12u\n\x16ListExternalIdentities\x12,.chatto.api.v1.ListExternalIdentitiesRequest\x1a-.chatto.api.v1.ListExternalIdentitiesResponse\x12~\n\x19StartExternalIdentityLink\x12/.chatto.api.v1.StartExternalIdentityLinkRequest\x1a0.chatto.api.v1.StartExternalIdentityLinkResponse\x12\x81\x01\n\x1aDisconnectExternalIdentity\x120.chatto.api.v1.DisconnectExternalIdentityRequest\x1a1.chatto.api.v1.DisconnectExternalIdentityResponse\x12T\n\x0bSetPresence\x12!.chatto.api.v1.SetPresenceRequest\x1a".chatto.api.v1.SetPresenceResponse\x12r\n\x15GetPresencePreference\x12+.chatto.api.v1.GetPresencePreferenceRequest\x1a,.chatto.api.v1.GetPresencePreferenceResponse\x12r\n\x15SetPresencePreference\x12+.chatto.api.v1.SetPresencePreferenceRequest\x1a,.chatto.api.v1.SetPresencePreferenceResponse\x12`\n\x0fRefreshPresence\x12%.chatto.api.v1.RefreshPresenceRequest\x1a&.chatto.api.v1.RefreshPresenceResponse\x12`\n\x0fSetCustomStatus\x12%.chatto.api.v1.SetCustomStatusRequest\x1a&.chatto.api.v1.SetCustomStatusResponse\x12n\n\x12DeleteCustomStatus\x12(.chatto.api.v1.DeleteCustomStatusRequest\x1a).chatto.api.v1.DeleteCustomStatusResponse"\x03\x90\x02\x02\x12u\n\x16RequestAccountDeletion\x12,.chatto.api.v1.RequestAccountDeletionRequest\x1a-.chatto.api.v1.RequestAccountDeletionResponse\x12`\n\x0fDeleteMyAccount\x12%.chatto.api.v1.DeleteMyAccountRequest\x1a&.chatto.api.v1.DeleteMyAccountResponseBw\n\x11com.chatto.api.v1B\x0cAccountProtoP\x01\xa2\x02\x03CAX\xaa\x02\rChatto.Api.V1\xca\x02\rChatto\\Api\\V1\xe2\x02\x19Chatto\\Api\\V1\\GPBMetadata\xea\x02\x0fChatto::Api::V1b\x06proto3',
+    b'\n\x1bchatto/api/v1/account.proto\x12\rchatto.api.v1\x1a google/protobuf/field_mask.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1bbuf/validate/validate.proto\x1a\'chatto/api/v1/external_identities.proto\x1a\x1cchatto/api/v1/presence.proto\x1a\x1fchatto/api/v1/user_status.proto\x1a\x19chatto/api/v1/users.proto\x1a\x1achatto/api/v1/viewer.proto"t\n\x15ChangePasswordRequest\x12&\n\x08password\x18\x01 \x01(\tR\x08passwordB\n\xbaH\x07r\x05\x10\x08\x18\x80\x01\x123\n\x10current_password\x18\x02 \x01(\tR\x0fcurrentPasswordB\x08\xbaH\x05r\x03\x18\x80\x01"A\n\x16ChangePasswordResponse\x12\'\n\x04user\x18\x01 \x01(\x0b2\x13.chatto.api.v1.UserR\x04user"|\n\rVerifiedEmail\x12\x14\n\x05email\x18\x01 \x01(\tR\x05email\x12;\n\x0bverified_at\x18\x02 \x01(\x0b2\x1a.google.protobuf.TimestampR\nverifiedAt\x12\x18\n\x07primary\x18\x03 \x01(\x08R\x07primary"N\n\x19ListVerifiedEmailsRequest\x121\n\x10expected_user_id\x18\x01 \x01(\tR\x0eexpectedUserIdB\x07\xbaH\x04r\x02\x10\x01"c\n\x1aListVerifiedEmailsResponse\x12E\n\x0fverified_emails\x18\x01 \x03(\x0b2\x1c.chatto.api.v1.VerifiedEmailR\x0everifiedEmails"v\n\x1fRequestEmailVerificationRequest\x12 \n\x05email\x18\x01 \x01(\tR\x05emailB\n\xbaH\x07r\x05\x18\xfe\x01`\x01\x121\n\x10expected_user_id\x18\x02 \x01(\tR\x0eexpectedUserIdB\x07\xbaH\x04r\x02\x10\x01""\n RequestEmailVerificationResponse"\x95\x01\n\x1fConfirmEmailVerificationRequest\x12 \n\x05email\x18\x01 \x01(\tR\x05emailB\n\xbaH\x07r\x05\x18\xfe\x01`\x01\x12\x1d\n\x04code\x18\x02 \x01(\tR\x04codeB\t\xbaH\x06r\x04\x10\x01\x18 \x121\n\x10expected_user_id\x18\x03 \x01(\tR\x0eexpectedUserIdB\x07\xbaH\x04r\x02\x10\x01"i\n ConfirmEmailVerificationResponse\x12E\n\x0fverified_emails\x18\x01 \x03(\x0b2\x1c.chatto.api.v1.VerifiedEmailR\x0everifiedEmails"m\n\x16SetPrimaryEmailRequest\x12 \n\x05email\x18\x01 \x01(\tR\x05emailB\n\xbaH\x07r\x05\x18\xfe\x01`\x01\x121\n\x10expected_user_id\x18\x02 \x01(\tR\x0eexpectedUserIdB\x07\xbaH\x04r\x02\x10\x01"`\n\x17SetPrimaryEmailResponse\x12E\n\x0fverified_emails\x18\x01 \x03(\x0b2\x1c.chatto.api.v1.VerifiedEmailR\x0everifiedEmails"\x14\n\x12GetSettingsRequest"N\n\x13GetSettingsResponse\x127\n\x08settings\x18\x01 \x01(\x0b2\x1b.chatto.api.v1.UserSettingsR\x08settings"\x9c\x02\n\x15UpdateSettingsRequest\x12\x1f\n\x08timezone\x18\x01 \x01(\tH\x00R\x08timezone\x88\x01\x01\x12I\n\x0btime_format\x18\x02 \x01(\x0e2\x19.chatto.api.v1.TimeFormatH\x01R\ntimeFormatB\x08\xbaH\x05\x82\x01\x02\x10\x01\x88\x01\x01\x12*\n\x0eshare_timezone\x18\x03 \x01(\x08H\x02R\rshareTimezone\x88\x01\x01\x12;\n\x0bupdate_mask\x18\x04 \x01(\x0b2\x1a.google.protobuf.FieldMaskR\nupdateMaskB\x0b\n\t_timezoneB\x0e\n\x0c_time_formatB\x11\n\x0f_share_timezone"Q\n\x16UpdateSettingsResponse\x127\n\x08settings\x18\x01 \x01(\x0b2\x1b.chatto.api.v1.UserSettingsR\x08settings"\x1f\n\x1dRequestAccountDeletionRequest"O\n\x1eRequestAccountDeletionResponse\x12-\n\x12confirmation_token\x18\x01 \x01(\tR\x11confirmationToken"G\n\x16DeleteMyAccountRequest\x12-\n\x12confirmation_token\x18\x01 \x01(\tR\x11confirmationToken"(\n\x17DeleteMyAccountResponseJ\x04\x08\x01\x10\x02R\x07deleted2\xb8\x0f\n\x10MyAccountService\x12]\n\x0eChangePassword\x12$.chatto.api.v1.ChangePasswordRequest\x1a%.chatto.api.v1.ChangePasswordResponse\x12n\n\x12ListVerifiedEmails\x12(.chatto.api.v1.ListVerifiedEmailsRequest\x1a).chatto.api.v1.ListVerifiedEmailsResponse"\x03\x90\x02\x01\x12{\n\x18RequestEmailVerification\x12..chatto.api.v1.RequestEmailVerificationRequest\x1a/.chatto.api.v1.RequestEmailVerificationResponse\x12{\n\x18ConfirmEmailVerification\x12..chatto.api.v1.ConfirmEmailVerificationRequest\x1a/.chatto.api.v1.ConfirmEmailVerificationResponse\x12`\n\x0fSetPrimaryEmail\x12%.chatto.api.v1.SetPrimaryEmailRequest\x1a&.chatto.api.v1.SetPrimaryEmailResponse\x12T\n\x0bGetSettings\x12!.chatto.api.v1.GetSettingsRequest\x1a".chatto.api.v1.GetSettingsResponse\x12]\n\x0eUpdateSettings\x12$.chatto.api.v1.UpdateSettingsRequest\x1a%.chatto.api.v1.UpdateSettingsResponse\x12u\n\x16ListExternalIdentities\x12,.chatto.api.v1.ListExternalIdentitiesRequest\x1a-.chatto.api.v1.ListExternalIdentitiesResponse\x12~\n\x19StartExternalIdentityLink\x12/.chatto.api.v1.StartExternalIdentityLinkRequest\x1a0.chatto.api.v1.StartExternalIdentityLinkResponse\x12\x81\x01\n\x1aDisconnectExternalIdentity\x120.chatto.api.v1.DisconnectExternalIdentityRequest\x1a1.chatto.api.v1.DisconnectExternalIdentityResponse\x12T\n\x0bSetPresence\x12!.chatto.api.v1.SetPresenceRequest\x1a".chatto.api.v1.SetPresenceResponse\x12r\n\x15GetPresencePreference\x12+.chatto.api.v1.GetPresencePreferenceRequest\x1a,.chatto.api.v1.GetPresencePreferenceResponse\x12r\n\x15SetPresencePreference\x12+.chatto.api.v1.SetPresencePreferenceRequest\x1a,.chatto.api.v1.SetPresencePreferenceResponse\x12`\n\x0fRefreshPresence\x12%.chatto.api.v1.RefreshPresenceRequest\x1a&.chatto.api.v1.RefreshPresenceResponse\x12`\n\x0fSetCustomStatus\x12%.chatto.api.v1.SetCustomStatusRequest\x1a&.chatto.api.v1.SetCustomStatusResponse\x12n\n\x12DeleteCustomStatus\x12(.chatto.api.v1.DeleteCustomStatusRequest\x1a).chatto.api.v1.DeleteCustomStatusResponse"\x03\x90\x02\x02\x12u\n\x16RequestAccountDeletion\x12,.chatto.api.v1.RequestAccountDeletionRequest\x1a-.chatto.api.v1.RequestAccountDeletionResponse\x12`\n\x0fDeleteMyAccount\x12%.chatto.api.v1.DeleteMyAccountRequest\x1a&.chatto.api.v1.DeleteMyAccountResponseBw\n\x11com.chatto.api.v1B\x0cAccountProtoP\x01\xa2\x02\x03CAX\xaa\x02\rChatto.Api.V1\xca\x02\rChatto\\Api\\V1\xe2\x02\x19Chatto\\Api\\V1\\GPBMetadata\xea\x02\x0fChatto::Api::V1b\x06proto3',
     [
         field_mask_pb.desc(),
         timestamp_pb.desc(),
@@ -776,8 +681,6 @@ _DESC = file_desc(
         viewer_pb.desc(),
     ],
     {
-        "UpdateProfileRequest": UpdateProfileRequest,
-        "UpdateProfileResponse": UpdateProfileResponse,
         "ChangePasswordRequest": ChangePasswordRequest,
         "ChangePasswordResponse": ChangePasswordResponse,
         "VerifiedEmail": VerifiedEmail,

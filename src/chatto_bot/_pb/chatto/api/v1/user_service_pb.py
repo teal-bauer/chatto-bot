@@ -10,12 +10,14 @@ from typing import Literal, TYPE_CHECKING, TypeAlias
 
 from protobuf import Message
 from protobuf._codegen import file_desc
+from protobuf.wkt import field_mask_pb
 
 from . import common_pb, member_directory_pb, pagination_pb, users_pb
 from ....buf.validate import validate_pb
 
 if TYPE_CHECKING:
     from protobuf import DescFile, Oneof
+    from protobuf.wkt import FieldMask
 
     from .common_pb import ImageUpload
     from .member_directory_pb import DirectoryMember
@@ -232,6 +234,109 @@ class BatchGetUsersResponse(Message[_BatchGetUsersResponseFields]):
 
         users: list[DirectoryMember]
 
+_UpdateUserProfileRequestFields: TypeAlias = Literal["user_id", "display_name", "login", "bio", "update_mask"]
+
+class UpdateUserProfileRequest(Message[_UpdateUserProfileRequestFields]):
+    """
+    Request to update one user's public profile. update_mask selects fields
+    to apply or reset. Fields outside the mask stay unchanged.
+
+    ```proto
+    message chatto.api.v1.UpdateUserProfileRequest
+    ```
+
+    Attributes:
+        user_id:
+            Required target user ID. Self-updates are allowed. Updating another user
+            requires the applicable account-management or bot-management authority.
+
+            ```proto
+            string user_id = 1;
+            ```
+        display_name:
+            New non-empty display name. The server also rejects control and
+            confusing invisible characters.
+
+            ```proto
+            optional string display_name = 2;
+            ```
+        login:
+            New login identifier, when changing it. The server accepts ASCII letters,
+            digits, period, underscore, and hyphen, starting with a letter or digit.
+
+            ```proto
+            optional string login = 3;
+            ```
+        bio:
+            New Markdown biography, when changing it. Empty clears the bio.
+
+            ```proto
+            optional string bio = 4;
+            ```
+        update_mask:
+            Editable fields to apply or reset: display_name, login, bio.
+            Omit to infer populated fields; * selects all editable fields. An explicit
+            empty mask is invalid. Unselected values are ignored. Selected absent values
+            reset the field to its default, subject to field validation.
+
+            ```proto
+            optional google.protobuf.FieldMask update_mask = 5;
+            ```
+    """
+
+    __slots__ = ("user_id", "display_name", "login", "bio", "update_mask")
+
+    if TYPE_CHECKING:
+
+        def __init__(
+            self,
+            *,
+            user_id: str = "",
+            display_name: str | None = None,
+            login: str | None = None,
+            bio: str | None = None,
+            update_mask: FieldMask | None = None,
+        ) -> None:
+            pass
+
+        user_id: str
+        display_name: str
+        login: str
+        bio: str
+        update_mask: FieldMask | None
+
+_UpdateUserProfileResponseFields: TypeAlias = Literal["user"]
+
+class UpdateUserProfileResponse(Message[_UpdateUserProfileResponseFields]):
+    """
+    Result of a user profile update.
+
+    ```proto
+    message chatto.api.v1.UpdateUserProfileResponse
+    ```
+
+    Attributes:
+        user:
+            Updated user profile.
+
+            ```proto
+            optional chatto.api.v1.User user = 1;
+            ```
+    """
+
+    __slots__ = ("user",)
+
+    if TYPE_CHECKING:
+
+        def __init__(
+            self,
+            *,
+            user: User | None = None,
+        ) -> None:
+            pass
+
+        user: User | None
+
 _UploadAvatarRequestFields: TypeAlias = Literal["image", "user_id"]
 
 class UploadAvatarRequest(Message[_UploadAvatarRequestFields]):
@@ -372,8 +477,9 @@ class DeleteAvatarResponse(Message[_DeleteAvatarResponseFields]):
 
 
 _DESC = file_desc(
-    b'\n chatto/api/v1/user_service.proto\x12\rchatto.api.v1\x1a\x1bbuf/validate/validate.proto\x1a\x1achatto/api/v1/common.proto\x1a$chatto/api/v1/member_directory.proto\x1a\x1echatto/api/v1/pagination.proto\x1a\x19chatto/api/v1/users.proto"~\n\x10ListUsersRequest\x12\x1f\n\x06search\x18\x01 \x01(\tR\x06searchB\x07\xbaH\x04r\x02\x18d\x12.\n\x04page\x18\x04 \x01(\x0b2\x1a.chatto.api.v1.PageRequestR\x04pageJ\x04\x08\x02\x10\x03J\x04\x08\x03\x10\x04R\x05limitR\x06offset"\x99\x01\n\x11ListUsersResponse\x124\n\x05users\x18\x01 \x03(\x0b2\x1e.chatto.api.v1.DirectoryMemberR\x05users\x12+\n\x04page\x18\x04 \x01(\x0b2\x17.chatto.api.v1.PageInfoR\x04pageJ\x04\x08\x02\x10\x03J\x04\x08\x03\x10\x04R\x0btotal_countR\x08has_more"_\n\x0eGetUserRequest\x12"\n\x07user_id\x18\x01 \x01(\tH\x00R\x06userIdB\x07\xbaH\x04r\x02\x10\x01\x12\x1f\n\x05login\x18\x02 \x01(\tH\x00R\x05loginB\x07\xbaH\x04r\x02\x10\x01B\x08\n\x06target"E\n\x0fGetUserResponse\x122\n\x04user\x18\x01 \x01(\x0b2\x1e.chatto.api.v1.DirectoryMemberR\x04user"C\n\x14BatchGetUsersRequest\x12+\n\x08user_ids\x18\x01 \x03(\tR\x07userIdsB\x10\xbaH\r\x92\x01\n\x08\x01\x10d"\x04r\x02\x10\x01"M\n\x15BatchGetUsersResponse\x124\n\x05users\x18\x01 \x03(\x0b2\x1e.chatto.api.v1.DirectoryMemberR\x05users"\x87\x01\n\x13UploadAvatarRequest\x120\n\x05image\x18\x04 \x01(\x0b2\x1a.chatto.api.v1.ImageUploadR\x05image\x12 \n\x07user_id\x18\x05 \x01(\tR\x06userIdB\x07\xbaH\x04r\x02\x10\x01J\x04\x08\x01\x10\x04R\x08filenameR\x0ccontent_type"?\n\x14UploadAvatarResponse\x12\'\n\x04user\x18\x01 \x01(\x0b2\x13.chatto.api.v1.UserR\x04user"7\n\x13DeleteAvatarRequest\x12 \n\x07user_id\x18\x01 \x01(\tR\x06userIdB\x07\xbaH\x04r\x02\x10\x01"?\n\x14DeleteAvatarResponse\x12\'\n\x04user\x18\x01 \x01(\x0b2\x13.chatto.api.v1.UserR\x04user2\xba\x03\n\x0bUserService\x12N\n\tListUsers\x12\x1f.chatto.api.v1.ListUsersRequest\x1a .chatto.api.v1.ListUsersResponse\x12H\n\x07GetUser\x12\x1d.chatto.api.v1.GetUserRequest\x1a\x1e.chatto.api.v1.GetUserResponse\x12Z\n\rBatchGetUsers\x12#.chatto.api.v1.BatchGetUsersRequest\x1a$.chatto.api.v1.BatchGetUsersResponse\x12W\n\x0cUploadAvatar\x12".chatto.api.v1.UploadAvatarRequest\x1a#.chatto.api.v1.UploadAvatarResponse\x12\\\n\x0cDeleteAvatar\x12".chatto.api.v1.DeleteAvatarRequest\x1a#.chatto.api.v1.DeleteAvatarResponse"\x03\x90\x02\x02B{\n\x11com.chatto.api.v1B\x10UserServiceProtoP\x01\xa2\x02\x03CAX\xaa\x02\rChatto.Api.V1\xca\x02\rChatto\\Api\\V1\xe2\x02\x19Chatto\\Api\\V1\\GPBMetadata\xea\x02\x0fChatto::Api::V1b\x06proto3',
+    b'\n chatto/api/v1/user_service.proto\x12\rchatto.api.v1\x1a google/protobuf/field_mask.proto\x1a\x1bbuf/validate/validate.proto\x1a\x1achatto/api/v1/common.proto\x1a$chatto/api/v1/member_directory.proto\x1a\x1echatto/api/v1/pagination.proto\x1a\x19chatto/api/v1/users.proto"~\n\x10ListUsersRequest\x12\x1f\n\x06search\x18\x01 \x01(\tR\x06searchB\x07\xbaH\x04r\x02\x18d\x12.\n\x04page\x18\x04 \x01(\x0b2\x1a.chatto.api.v1.PageRequestR\x04pageJ\x04\x08\x02\x10\x03J\x04\x08\x03\x10\x04R\x05limitR\x06offset"\x99\x01\n\x11ListUsersResponse\x124\n\x05users\x18\x01 \x03(\x0b2\x1e.chatto.api.v1.DirectoryMemberR\x05users\x12+\n\x04page\x18\x04 \x01(\x0b2\x17.chatto.api.v1.PageInfoR\x04pageJ\x04\x08\x02\x10\x03J\x04\x08\x03\x10\x04R\x0btotal_countR\x08has_more"_\n\x0eGetUserRequest\x12"\n\x07user_id\x18\x01 \x01(\tH\x00R\x06userIdB\x07\xbaH\x04r\x02\x10\x01\x12\x1f\n\x05login\x18\x02 \x01(\tH\x00R\x05loginB\x07\xbaH\x04r\x02\x10\x01B\x08\n\x06target"E\n\x0fGetUserResponse\x122\n\x04user\x18\x01 \x01(\x0b2\x1e.chatto.api.v1.DirectoryMemberR\x04user"C\n\x14BatchGetUsersRequest\x12+\n\x08user_ids\x18\x01 \x03(\tR\x07userIdsB\x10\xbaH\r\x92\x01\n\x08\x01\x10d"\x04r\x02\x10\x01"M\n\x15BatchGetUsersResponse\x124\n\x05users\x18\x01 \x03(\x0b2\x1e.chatto.api.v1.DirectoryMemberR\x05users"\x96\x02\n\x18UpdateUserProfileRequest\x12 \n\x07user_id\x18\x01 \x01(\tR\x06userIdB\x07\xbaH\x04r\x02\x10\x01\x121\n\x0cdisplay_name\x18\x02 \x01(\tH\x00R\x0bdisplayNameB\t\xbaH\x06r\x04\x10\x01\x18 \x88\x01\x01\x12$\n\x05login\x18\x03 \x01(\tH\x01R\x05loginB\t\xbaH\x06r\x04\x10\x02\x18 \x88\x01\x01\x12\x1f\n\x03bio\x18\x04 \x01(\tH\x02R\x03bioB\x08\xbaH\x05r\x03\x18\xe8\x07\x88\x01\x01\x12;\n\x0bupdate_mask\x18\x05 \x01(\x0b2\x1a.google.protobuf.FieldMaskR\nupdateMaskB\x0f\n\r_display_nameB\x08\n\x06_loginB\x06\n\x04_bio"D\n\x19UpdateUserProfileResponse\x12\'\n\x04user\x18\x01 \x01(\x0b2\x13.chatto.api.v1.UserR\x04user"\x87\x01\n\x13UploadAvatarRequest\x120\n\x05image\x18\x04 \x01(\x0b2\x1a.chatto.api.v1.ImageUploadR\x05image\x12 \n\x07user_id\x18\x05 \x01(\tR\x06userIdB\x07\xbaH\x04r\x02\x10\x01J\x04\x08\x01\x10\x04R\x08filenameR\x0ccontent_type"?\n\x14UploadAvatarResponse\x12\'\n\x04user\x18\x01 \x01(\x0b2\x13.chatto.api.v1.UserR\x04user"7\n\x13DeleteAvatarRequest\x12 \n\x07user_id\x18\x01 \x01(\tR\x06userIdB\x07\xbaH\x04r\x02\x10\x01"?\n\x14DeleteAvatarResponse\x12\'\n\x04user\x18\x01 \x01(\x0b2\x13.chatto.api.v1.UserR\x04user2\xa2\x04\n\x0bUserService\x12N\n\tListUsers\x12\x1f.chatto.api.v1.ListUsersRequest\x1a .chatto.api.v1.ListUsersResponse\x12H\n\x07GetUser\x12\x1d.chatto.api.v1.GetUserRequest\x1a\x1e.chatto.api.v1.GetUserResponse\x12Z\n\rBatchGetUsers\x12#.chatto.api.v1.BatchGetUsersRequest\x1a$.chatto.api.v1.BatchGetUsersResponse\x12f\n\x11UpdateUserProfile\x12\'.chatto.api.v1.UpdateUserProfileRequest\x1a(.chatto.api.v1.UpdateUserProfileResponse\x12W\n\x0cUploadAvatar\x12".chatto.api.v1.UploadAvatarRequest\x1a#.chatto.api.v1.UploadAvatarResponse\x12\\\n\x0cDeleteAvatar\x12".chatto.api.v1.DeleteAvatarRequest\x1a#.chatto.api.v1.DeleteAvatarResponse"\x03\x90\x02\x02B{\n\x11com.chatto.api.v1B\x10UserServiceProtoP\x01\xa2\x02\x03CAX\xaa\x02\rChatto.Api.V1\xca\x02\rChatto\\Api\\V1\xe2\x02\x19Chatto\\Api\\V1\\GPBMetadata\xea\x02\x0fChatto::Api::V1b\x06proto3',
     [
+        field_mask_pb.desc(),
         validate_pb.desc(),
         common_pb.desc(),
         member_directory_pb.desc(),
@@ -387,6 +493,8 @@ _DESC = file_desc(
         "GetUserResponse": GetUserResponse,
         "BatchGetUsersRequest": BatchGetUsersRequest,
         "BatchGetUsersResponse": BatchGetUsersResponse,
+        "UpdateUserProfileRequest": UpdateUserProfileRequest,
+        "UpdateUserProfileResponse": UpdateUserProfileResponse,
         "UploadAvatarRequest": UploadAvatarRequest,
         "UploadAvatarResponse": UploadAvatarResponse,
         "DeleteAvatarRequest": DeleteAvatarRequest,

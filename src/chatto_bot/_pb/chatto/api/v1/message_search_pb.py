@@ -12,7 +12,7 @@ from protobuf import Enum, Message
 from protobuf._codegen import file_desc
 from protobuf.wkt import duration_pb, timestamp_pb
 
-from . import message_types_pb, room_timeline_pb, rooms_pb
+from . import message_types_pb, room_timeline_pb, rooms_pb, threads_pb
 from ....buf.validate import validate_pb
 
 if TYPE_CHECKING:
@@ -22,9 +22,10 @@ if TYPE_CHECKING:
     from .message_types_pb import Message as Message_, ThreadSummary
     from .room_timeline_pb import RoomTimelineIncludes
     from .rooms_pb import RoomSummary
+    from .threads_pb import ThreadRootAuthorFilter
 
 
-_SearchMessagesRequestFields: TypeAlias = Literal["query", "room_id", "author_id", "created_after", "created_before", "has_attachments", "order", "page_size", "cursor", "scope", "group_by"]
+_SearchMessagesRequestFields: TypeAlias = Literal["query", "room_id", "author_id", "created_after", "created_before", "has_attachments", "order", "page_size", "cursor", "scope", "group_by", "root_author_filter"]
 
 class SearchMessagesRequest(Message[_SearchMessagesRequestFields]):
     """
@@ -113,9 +114,17 @@ class SearchMessagesRequest(Message[_SearchMessagesRequestFields]):
             ```proto
             chatto.api.v1.MessageSearchGroupBy group_by = 11;
             ```
+        root_author_filter:
+            Select root authors within FOLLOWED_THREADS before search and pagination.
+            Other scopes require UNSPECIFIED. This does not restrict reply authors;
+            author_id and from: still select the authors of matching messages.
+
+            ```proto
+            chatto.api.v1.ThreadRootAuthorFilter root_author_filter = 12;
+            ```
     """
 
-    __slots__ = ("query", "room_id", "author_id", "created_after", "created_before", "has_attachments", "order", "page_size", "cursor", "scope", "group_by")
+    __slots__ = ("query", "room_id", "author_id", "created_after", "created_before", "has_attachments", "order", "page_size", "cursor", "scope", "group_by", "root_author_filter")
 
     if TYPE_CHECKING:
 
@@ -133,6 +142,7 @@ class SearchMessagesRequest(Message[_SearchMessagesRequestFields]):
             cursor: str = "",
             scope: MessageSearchScope | None = None,
             group_by: MessageSearchGroupBy | None = None,
+            root_author_filter: ThreadRootAuthorFilter | None = None,
         ) -> None:
             pass
 
@@ -147,6 +157,7 @@ class SearchMessagesRequest(Message[_SearchMessagesRequestFields]):
         cursor: str
         scope: MessageSearchScope
         group_by: MessageSearchGroupBy
+        root_author_filter: ThreadRootAuthorFilter
 
 _MessageSearchResultFields: TypeAlias = Literal["message", "relevance_score", "thread_context"]
 
@@ -540,12 +551,13 @@ class MessageSearchState(Enum):
 
 
 _DESC = file_desc(
-    b'\n"chatto/api/v1/message_search.proto\x12\rchatto.api.v1\x1a\x1bbuf/validate/validate.proto\x1a!chatto/api/v1/message_types.proto\x1a!chatto/api/v1/room_timeline.proto\x1a\x19chatto/api/v1/rooms.proto\x1a\x1egoogle/protobuf/duration.proto\x1a\x1fgoogle/protobuf/timestamp.proto"\xf0\x04\n\x15SearchMessagesRequest\x12 \n\x05query\x18\x01 \x01(\tR\x05queryB\n\xbaH\x07r\x05\x10\x01(\x80\x08\x12(\n\x07room_id\x18\x02 \x01(\tH\x00R\x06roomIdB\n\xbaH\x07r\x05\x10\x01(\x80\x01\x88\x01\x01\x12,\n\tauthor_id\x18\x03 \x01(\tH\x01R\x08authorIdB\n\xbaH\x07r\x05\x10\x01(\x80\x01\x88\x01\x01\x12?\n\rcreated_after\x18\x04 \x01(\x0b2\x1a.google.protobuf.TimestampR\x0ccreatedAfter\x12A\n\x0ecreated_before\x18\x05 \x01(\x0b2\x1a.google.protobuf.TimestampR\rcreatedBefore\x12\'\n\x0fhas_attachments\x18\x06 \x01(\x08R\x0ehasAttachments\x12A\n\x05order\x18\x07 \x01(\x0e2!.chatto.api.v1.MessageSearchOrderR\x05orderB\x08\xbaH\x05\x82\x01\x02\x10\x01\x12$\n\tpage_size\x18\x08 \x01(\rR\x08pageSizeB\x07\xbaH\x04*\x02\x18d\x12 \n\x06cursor\x18\t \x01(\tR\x06cursorB\x08\xbaH\x05r\x03(\x80@\x12A\n\x05scope\x18\n \x01(\x0e2!.chatto.api.v1.MessageSearchScopeR\x05scopeB\x08\xbaH\x05\x82\x01\x02\x10\x01\x12H\n\x08group_by\x18\x0b \x01(\x0e2#.chatto.api.v1.MessageSearchGroupByR\x07groupByB\x08\xbaH\x05\x82\x01\x02\x10\x01B\n\n\x08_room_idB\x0c\n\n_author_id"\xbb\x01\n\x13MessageSearchResult\x120\n\x07message\x18\x01 \x01(\x0b2\x16.chatto.api.v1.MessageR\x07message\x12\'\n\x0frelevance_score\x18\x02 \x01(\x01R\x0erelevanceScore\x12I\n\x0ethread_context\x18\x03 \x01(\x0b2".chatto.api.v1.ThreadSearchContextR\rthreadContext"\x82\x02\n\x16SearchMessagesResponse\x12<\n\x07results\x18\x01 \x03(\x0b2".chatto.api.v1.MessageSearchResultR\x07results\x12\x1f\n\x0bnext_cursor\x18\x02 \x01(\tR\nnextCursor\x121\n\x12thread_total_count\x18\x04 \x01(\x04H\x00R\x10threadTotalCount\x88\x01\x01\x12?\n\x08includes\x18\x05 \x01(\x0b2#.chatto.api.v1.RoomTimelineIncludesR\x08includesB\x15\n\x13_thread_total_count"\xbf\x02\n\x13ThreadSearchContext\x129\n\x0croot_message\x18\x01 \x01(\x0b2\x16.chatto.api.v1.MessageR\x0brootMessage\x12.\n\x04room\x18\x02 \x01(\x0b2\x1a.chatto.api.v1.RoomSummaryR\x04room\x124\n\x06thread\x18\x03 \x01(\x0b2\x1c.chatto.api.v1.ThreadSummaryR\x06thread\x129\n\x0clatest_reply\x18\x04 \x01(\x0b2\x16.chatto.api.v1.MessageR\x0blatestReply\x12L\n#direct_message_participant_user_ids\x18\x05 \x03(\tR\x1fdirectMessageParticipantUserIds"\x12\n\x10GetStatusRequest"\xbd\x01\n\x11GetStatusResponse\x127\n\x05state\x18\x01 \x01(\x0e2!.chatto.api.v1.MessageSearchStateR\x05state\x12:\n\x0bretry_after\x18\x04 \x01(\x0b2\x19.google.protobuf.DurationR\nretryAfterJ\x04\x08\x02\x10\x03J\x04\x08\x03\x10\x04R\x13indexed_event_countR\x12target_event_count*\xa9\x01\n\x12MessageSearchOrder\x12$\n MESSAGE_SEARCH_ORDER_UNSPECIFIED\x10\x00\x12"\n\x1eMESSAGE_SEARCH_ORDER_RELEVANCE\x10\x01\x12\x1f\n\x1bMESSAGE_SEARCH_ORDER_NEWEST\x10\x02\x12(\n$MESSAGE_SEARCH_ORDER_THREAD_ACTIVITY\x10\x03*e\n\x12MessageSearchScope\x12$\n MESSAGE_SEARCH_SCOPE_UNSPECIFIED\x10\x00\x12)\n%MESSAGE_SEARCH_SCOPE_FOLLOWED_THREADS\x10\x01*c\n\x14MessageSearchGroupBy\x12\'\n#MESSAGE_SEARCH_GROUP_BY_UNSPECIFIED\x10\x00\x12"\n\x1eMESSAGE_SEARCH_GROUP_BY_THREAD\x10\x01*\x8c\x02\n\x12MessageSearchState\x12$\n MESSAGE_SEARCH_STATE_UNSPECIFIED\x10\x00\x12!\n\x1dMESSAGE_SEARCH_STATE_DISABLED\x10\x01\x12!\n\x1dMESSAGE_SEARCH_STATE_STARTING\x10\x02\x12!\n\x1dMESSAGE_SEARCH_STATE_INDEXING\x10\x03\x12\x1e\n\x1aMESSAGE_SEARCH_STATE_READY\x10\x04\x12!\n\x1dMESSAGE_SEARCH_STATE_DEGRADED\x10\x05\x12$\n MESSAGE_SEARCH_STATE_UNAVAILABLE\x10\x062\xc5\x01\n\x14MessageSearchService\x12N\n\tGetStatus\x12\x1f.chatto.api.v1.GetStatusRequest\x1a .chatto.api.v1.GetStatusResponse\x12]\n\x0eSearchMessages\x12$.chatto.api.v1.SearchMessagesRequest\x1a%.chatto.api.v1.SearchMessagesResponseB}\n\x11com.chatto.api.v1B\x12MessageSearchProtoP\x01\xa2\x02\x03CAX\xaa\x02\rChatto.Api.V1\xca\x02\rChatto\\Api\\V1\xe2\x02\x19Chatto\\Api\\V1\\GPBMetadata\xea\x02\x0fChatto::Api::V1b\x06proto3',
+    b'\n"chatto/api/v1/message_search.proto\x12\rchatto.api.v1\x1a\x1bbuf/validate/validate.proto\x1a!chatto/api/v1/message_types.proto\x1a!chatto/api/v1/room_timeline.proto\x1a\x19chatto/api/v1/rooms.proto\x1a\x1bchatto/api/v1/threads.proto\x1a\x1egoogle/protobuf/duration.proto\x1a\x1fgoogle/protobuf/timestamp.proto"\xcf\x05\n\x15SearchMessagesRequest\x12 \n\x05query\x18\x01 \x01(\tR\x05queryB\n\xbaH\x07r\x05\x10\x01(\x80\x08\x12(\n\x07room_id\x18\x02 \x01(\tH\x00R\x06roomIdB\n\xbaH\x07r\x05\x10\x01(\x80\x01\x88\x01\x01\x12,\n\tauthor_id\x18\x03 \x01(\tH\x01R\x08authorIdB\n\xbaH\x07r\x05\x10\x01(\x80\x01\x88\x01\x01\x12?\n\rcreated_after\x18\x04 \x01(\x0b2\x1a.google.protobuf.TimestampR\x0ccreatedAfter\x12A\n\x0ecreated_before\x18\x05 \x01(\x0b2\x1a.google.protobuf.TimestampR\rcreatedBefore\x12\'\n\x0fhas_attachments\x18\x06 \x01(\x08R\x0ehasAttachments\x12A\n\x05order\x18\x07 \x01(\x0e2!.chatto.api.v1.MessageSearchOrderR\x05orderB\x08\xbaH\x05\x82\x01\x02\x10\x01\x12$\n\tpage_size\x18\x08 \x01(\rR\x08pageSizeB\x07\xbaH\x04*\x02\x18d\x12 \n\x06cursor\x18\t \x01(\tR\x06cursorB\x08\xbaH\x05r\x03(\x80@\x12A\n\x05scope\x18\n \x01(\x0e2!.chatto.api.v1.MessageSearchScopeR\x05scopeB\x08\xbaH\x05\x82\x01\x02\x10\x01\x12H\n\x08group_by\x18\x0b \x01(\x0e2#.chatto.api.v1.MessageSearchGroupByR\x07groupByB\x08\xbaH\x05\x82\x01\x02\x10\x01\x12]\n\x12root_author_filter\x18\x0c \x01(\x0e2%.chatto.api.v1.ThreadRootAuthorFilterR\x10rootAuthorFilterB\x08\xbaH\x05\x82\x01\x02\x10\x01B\n\n\x08_room_idB\x0c\n\n_author_id"\xbb\x01\n\x13MessageSearchResult\x120\n\x07message\x18\x01 \x01(\x0b2\x16.chatto.api.v1.MessageR\x07message\x12\'\n\x0frelevance_score\x18\x02 \x01(\x01R\x0erelevanceScore\x12I\n\x0ethread_context\x18\x03 \x01(\x0b2".chatto.api.v1.ThreadSearchContextR\rthreadContext"\x82\x02\n\x16SearchMessagesResponse\x12<\n\x07results\x18\x01 \x03(\x0b2".chatto.api.v1.MessageSearchResultR\x07results\x12\x1f\n\x0bnext_cursor\x18\x02 \x01(\tR\nnextCursor\x121\n\x12thread_total_count\x18\x04 \x01(\x04H\x00R\x10threadTotalCount\x88\x01\x01\x12?\n\x08includes\x18\x05 \x01(\x0b2#.chatto.api.v1.RoomTimelineIncludesR\x08includesB\x15\n\x13_thread_total_count"\xbf\x02\n\x13ThreadSearchContext\x129\n\x0croot_message\x18\x01 \x01(\x0b2\x16.chatto.api.v1.MessageR\x0brootMessage\x12.\n\x04room\x18\x02 \x01(\x0b2\x1a.chatto.api.v1.RoomSummaryR\x04room\x124\n\x06thread\x18\x03 \x01(\x0b2\x1c.chatto.api.v1.ThreadSummaryR\x06thread\x129\n\x0clatest_reply\x18\x04 \x01(\x0b2\x16.chatto.api.v1.MessageR\x0blatestReply\x12L\n#direct_message_participant_user_ids\x18\x05 \x03(\tR\x1fdirectMessageParticipantUserIds"\x12\n\x10GetStatusRequest"\xbd\x01\n\x11GetStatusResponse\x127\n\x05state\x18\x01 \x01(\x0e2!.chatto.api.v1.MessageSearchStateR\x05state\x12:\n\x0bretry_after\x18\x04 \x01(\x0b2\x19.google.protobuf.DurationR\nretryAfterJ\x04\x08\x02\x10\x03J\x04\x08\x03\x10\x04R\x13indexed_event_countR\x12target_event_count*\xa9\x01\n\x12MessageSearchOrder\x12$\n MESSAGE_SEARCH_ORDER_UNSPECIFIED\x10\x00\x12"\n\x1eMESSAGE_SEARCH_ORDER_RELEVANCE\x10\x01\x12\x1f\n\x1bMESSAGE_SEARCH_ORDER_NEWEST\x10\x02\x12(\n$MESSAGE_SEARCH_ORDER_THREAD_ACTIVITY\x10\x03*e\n\x12MessageSearchScope\x12$\n MESSAGE_SEARCH_SCOPE_UNSPECIFIED\x10\x00\x12)\n%MESSAGE_SEARCH_SCOPE_FOLLOWED_THREADS\x10\x01*c\n\x14MessageSearchGroupBy\x12\'\n#MESSAGE_SEARCH_GROUP_BY_UNSPECIFIED\x10\x00\x12"\n\x1eMESSAGE_SEARCH_GROUP_BY_THREAD\x10\x01*\x8c\x02\n\x12MessageSearchState\x12$\n MESSAGE_SEARCH_STATE_UNSPECIFIED\x10\x00\x12!\n\x1dMESSAGE_SEARCH_STATE_DISABLED\x10\x01\x12!\n\x1dMESSAGE_SEARCH_STATE_STARTING\x10\x02\x12!\n\x1dMESSAGE_SEARCH_STATE_INDEXING\x10\x03\x12\x1e\n\x1aMESSAGE_SEARCH_STATE_READY\x10\x04\x12!\n\x1dMESSAGE_SEARCH_STATE_DEGRADED\x10\x05\x12$\n MESSAGE_SEARCH_STATE_UNAVAILABLE\x10\x062\xc5\x01\n\x14MessageSearchService\x12N\n\tGetStatus\x12\x1f.chatto.api.v1.GetStatusRequest\x1a .chatto.api.v1.GetStatusResponse\x12]\n\x0eSearchMessages\x12$.chatto.api.v1.SearchMessagesRequest\x1a%.chatto.api.v1.SearchMessagesResponseB}\n\x11com.chatto.api.v1B\x12MessageSearchProtoP\x01\xa2\x02\x03CAX\xaa\x02\rChatto.Api.V1\xca\x02\rChatto\\Api\\V1\xe2\x02\x19Chatto\\Api\\V1\\GPBMetadata\xea\x02\x0fChatto::Api::V1b\x06proto3',
     [
         validate_pb.desc(),
         message_types_pb.desc(),
         room_timeline_pb.desc(),
         rooms_pb.desc(),
+        threads_pb.desc(),
         duration_pb.desc(),
         timestamp_pb.desc(),
     ],

@@ -2,7 +2,7 @@ version: v2
 managed:
   enabled: true
 plugins:
-  - remote: buf.build/bufbuild/py
+  - remote: buf.build/bufbuild/py:v0.5.0
     out: ../../chatto-bot/src/chatto_bot/_pb
     include_imports: true
     types:
@@ -11,7 +11,7 @@ plugins:
       - chatto.auth.v1
       - chatto.discovery.v1
       - chatto.realtime.v1
-  - remote: buf.build/connectrpc/py
+  - remote: buf.build/connectrpc/py:v0.12.1
     out: ../../chatto-bot/src/chatto_bot/_pb
     include_imports: true
     types:

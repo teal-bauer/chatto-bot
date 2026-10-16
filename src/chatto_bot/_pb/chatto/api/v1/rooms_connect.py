@@ -19,7 +19,7 @@ from . import rooms_pb
 from .member_directory_pb import BatchGetMembersRequest, BatchGetMembersResponse, GetMemberRequest, GetMemberResponse, ListMembersRequest, ListMembersResponse
 from .read_state_pb import BatchGetRoomReadStatesRequest, BatchGetRoomReadStatesResponse, GetRoomReadStateRequest, GetRoomReadStateResponse, MarkRoomAsReadRequest, MarkRoomAsReadResponse
 from .room_timeline_pb import GetRoomEventsAroundRequest, GetRoomEventsAroundResponse, GetRoomEventsRequest, GetRoomEventsResponse
-from .rooms_pb import AddMemberRequest, AddMemberResponse, ArchiveRoomRequest, ArchiveRoomResponse, BanMemberRequest, BanMemberResponse, CreatePinnedMessageRequest, CreatePinnedMessageResponse, CreateRoomRequest, CreateRoomResponse, DeletePinnedMessageRequest, DeletePinnedMessageResponse, JoinRoomGroupRequest, JoinRoomGroupResponse, JoinRoomRequest, JoinRoomResponse, LeaveRoomRequest, LeaveRoomResponse, ListBansRequest, ListBansResponse, ListPinnedMessagesRequest, ListPinnedMessagesResponse, ListRoomAttachmentsRequest, ListRoomAttachmentsResponse, RefreshTypingIndicatorRequest, RefreshTypingIndicatorResponse, RemoveMemberRequest, RemoveMemberResponse, StartDMRequest, StartDMResponse, UnarchiveRoomRequest, UnarchiveRoomResponse, UnbanMemberRequest, UnbanMemberResponse, UpdateRoomRequest, UpdateRoomResponse
+from .rooms_pb import AddMemberRequest, AddMemberResponse, ArchiveRoomRequest, ArchiveRoomResponse, CreatePinnedMessageRequest, CreatePinnedMessageResponse, CreateRoomRequest, CreateRoomResponse, DeletePinnedMessageRequest, DeletePinnedMessageResponse, JoinRoomGroupRequest, JoinRoomGroupResponse, JoinRoomRequest, JoinRoomResponse, LeaveRoomRequest, LeaveRoomResponse, LiftSuspensionRequest, LiftSuspensionResponse, ListPinnedMessagesRequest, ListPinnedMessagesResponse, ListRoomAttachmentsRequest, ListRoomAttachmentsResponse, ListSuspensionsRequest, ListSuspensionsResponse, RefreshTypingIndicatorRequest, RefreshTypingIndicatorResponse, RemoveMemberRequest, RemoveMemberResponse, RemoveUserRequest, RemoveUserResponse, StartDMRequest, StartDMResponse, UnarchiveRoomRequest, UnarchiveRoomResponse, UpdateRoomRequest, UpdateRoomResponse
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Iterable, Mapping
@@ -142,7 +142,7 @@ class RoomService(Protocol):
         room or user.manage-accounts overrides the target's missing room.join.
         Bot owners and bot.manage holders may also add bots, but without either
         override the bot needs effective room.join, bounded by its owner's authority.
-        Preserves permission grants. Bans, archived, universal, and DM rooms prevent adding.
+        Preserves permission grants. Suspensions, archived, universal, and DM rooms prevent adding.
         """
         raise ConnectError(Code.UNIMPLEMENTED, 'Not implemented')
 
@@ -155,10 +155,10 @@ class RoomService(Protocol):
         """
         raise ConnectError(Code.UNIMPLEMENTED, 'Not implemented')
 
-    async def list_bans(self, request: ListBansRequest, ctx: RequestContext[ListBansRequest, ListBansResponse], /) -> ListBansResponse:
+    async def list_suspensions(self, request: ListSuspensionsRequest, ctx: RequestContext[ListSuspensionsRequest, ListSuspensionsResponse], /) -> ListSuspensionsResponse:
         """
-        Lists active channel room bans. The caller must be allowed to moderate room
-        membership bans.
+        Lists active channel room suspensions. Requires server-scope
+        room.remove-member.
         """
         raise ConnectError(Code.UNIMPLEMENTED, 'Not implemented')
 
@@ -183,7 +183,7 @@ class RoomService(Protocol):
 
     async def create_pinned_message(self, request: CreatePinnedMessageRequest, ctx: RequestContext[CreatePinnedMessageRequest, CreatePinnedMessageResponse], /) -> CreatePinnedMessageResponse:
         """
-        Pins a current message. The caller must have room.manage and must be able
+        Pins a current message. The caller must have message.pin and must be able
         to read the message. Repeating an existing pin is idempotent. Direct-message
         rooms are rejected.
         """
@@ -191,7 +191,7 @@ class RoomService(Protocol):
 
     async def delete_pinned_message(self, request: DeletePinnedMessageRequest, ctx: RequestContext[DeletePinnedMessageRequest, DeletePinnedMessageResponse], /) -> DeletePinnedMessageResponse:
         """
-        Removes a current pin. The caller must have room.manage. Removing a
+        Removes a current pin. The caller must have message.pin. Removing a
         missing pin is idempotent. Direct-message rooms are rejected.
         """
         raise ConnectError(Code.UNIMPLEMENTED, 'Not implemented')
@@ -237,17 +237,18 @@ class RoomService(Protocol):
         """
         raise ConnectError(Code.UNIMPLEMENTED, 'Not implemented')
 
-    async def ban_member(self, request: BanMemberRequest, ctx: RequestContext[BanMemberRequest, BanMemberResponse], /) -> BanMemberResponse:
+    async def remove_user(self, request: RemoveUserRequest, ctx: RequestContext[RemoveUserRequest, RemoveUserResponse], /) -> RemoveUserResponse:
         """
-        Bans a member from a channel room. Direct-message rooms cannot be moderated
-        this way, and the target must currently be a room member.
+        Removes a current channel room member with a required reason. Requires
+        room.remove-member. Without suspension, ordinary join rules apply afterward.
+        Universal rooms require a suspension. Direct-message rooms are excluded.
         """
         raise ConnectError(Code.UNIMPLEMENTED, 'Not implemented')
 
-    async def unban_member(self, request: UnbanMemberRequest, ctx: RequestContext[UnbanMemberRequest, UnbanMemberResponse], /) -> UnbanMemberResponse:
+    async def lift_suspension(self, request: LiftSuspensionRequest, ctx: RequestContext[LiftSuspensionRequest, LiftSuspensionResponse], /) -> LiftSuspensionResponse:
         """
-        Removes an active channel room ban. Calling this when no active ban exists
-        is allowed and still returns success.
+        Lifts an active channel room suspension. Requires room.remove-member.
+        Calling this when no active suspension exists succeeds.
         """
         raise ConnectError(Code.UNIMPLEMENTED, 'Not implemented')
 
@@ -419,15 +420,15 @@ class RoomServiceASGIApplication(ConnectASGIApplication[RoomService]):
                     ),
                     function=svc.remove_member,
                 ),
-                "/chatto.api.v1.RoomService/ListBans": Endpoint.unary(
+                "/chatto.api.v1.RoomService/ListSuspensions": Endpoint.unary(
                     method=MethodInfo(
-                        name="ListBans",
+                        name="ListSuspensions",
                         service_name="chatto.api.v1.RoomService",
-                        input=ListBansRequest,
-                        output=ListBansResponse,
+                        input=ListSuspensionsRequest,
+                        output=ListSuspensionsResponse,
                         idempotency_level=IdempotencyLevel.UNKNOWN,
                     ),
-                    function=svc.list_bans,
+                    function=svc.list_suspensions,
                 ),
                 "/chatto.api.v1.RoomService/ListRoomAttachments": Endpoint.unary(
                     method=MethodInfo(
@@ -509,25 +510,25 @@ class RoomServiceASGIApplication(ConnectASGIApplication[RoomService]):
                     ),
                     function=svc.mark_room_as_read,
                 ),
-                "/chatto.api.v1.RoomService/BanMember": Endpoint.unary(
+                "/chatto.api.v1.RoomService/RemoveUser": Endpoint.unary(
                     method=MethodInfo(
-                        name="BanMember",
+                        name="RemoveUser",
                         service_name="chatto.api.v1.RoomService",
-                        input=BanMemberRequest,
-                        output=BanMemberResponse,
+                        input=RemoveUserRequest,
+                        output=RemoveUserResponse,
                         idempotency_level=IdempotencyLevel.UNKNOWN,
                     ),
-                    function=svc.ban_member,
+                    function=svc.remove_user,
                 ),
-                "/chatto.api.v1.RoomService/UnbanMember": Endpoint.unary(
+                "/chatto.api.v1.RoomService/LiftSuspension": Endpoint.unary(
                     method=MethodInfo(
-                        name="UnbanMember",
+                        name="LiftSuspension",
                         service_name="chatto.api.v1.RoomService",
-                        input=UnbanMemberRequest,
-                        output=UnbanMemberResponse,
+                        input=LiftSuspensionRequest,
+                        output=LiftSuspensionResponse,
                         idempotency_level=IdempotencyLevel.UNKNOWN,
                     ),
-                    function=svc.unban_member,
+                    function=svc.lift_suspension,
                 ),
             },
             interceptors=interceptors,
@@ -881,7 +882,7 @@ class RoomServiceClient(ConnectClient):
         room or user.manage-accounts overrides the target's missing room.join.
         Bot owners and bot.manage holders may also add bots, but without either
         override the bot needs effective room.join, bounded by its owner's authority.
-        Preserves permission grants. Bans, archived, universal, and DM rooms prevent adding.
+        Preserves permission grants. Suspensions, archived, universal, and DM rooms prevent adding.
         """
         return await self.execute_unary(
             request=request,
@@ -922,24 +923,24 @@ class RoomServiceClient(ConnectClient):
             timeout_ms=timeout_ms,
         )
 
-    async def list_bans(
+    async def list_suspensions(
         self,
-        request: ListBansRequest,
+        request: ListSuspensionsRequest,
         *,
         headers: Headers | Mapping[str, str] | None = None, 
         timeout_ms: int | None = None,
-    ) -> ListBansResponse:
+    ) -> ListSuspensionsResponse:
         """
-        Lists active channel room bans. The caller must be allowed to moderate room
-        membership bans.
+        Lists active channel room suspensions. Requires server-scope
+        room.remove-member.
         """
         return await self.execute_unary(
             request=request,
             method=MethodInfo(
-                name="ListBans",
+                name="ListSuspensions",
                 service_name="chatto.api.v1.RoomService",
-                input=ListBansRequest,
-                output=ListBansResponse,
+                input=ListSuspensionsRequest,
+                output=ListSuspensionsResponse,
                 idempotency_level=IdempotencyLevel.UNKNOWN,
             ),
             headers=headers,
@@ -1007,7 +1008,7 @@ class RoomServiceClient(ConnectClient):
         timeout_ms: int | None = None,
     ) -> CreatePinnedMessageResponse:
         """
-        Pins a current message. The caller must have room.manage and must be able
+        Pins a current message. The caller must have message.pin and must be able
         to read the message. Repeating an existing pin is idempotent. Direct-message
         rooms are rejected.
         """
@@ -1032,7 +1033,7 @@ class RoomServiceClient(ConnectClient):
         timeout_ms: int | None = None,
     ) -> DeletePinnedMessageResponse:
         """
-        Removes a current pin. The caller must have room.manage. Removing a
+        Removes a current pin. The caller must have message.pin. Removing a
         missing pin is idempotent. Direct-message rooms are rejected.
         """
         return await self.execute_unary(
@@ -1157,48 +1158,49 @@ class RoomServiceClient(ConnectClient):
             timeout_ms=timeout_ms,
         )
 
-    async def ban_member(
+    async def remove_user(
         self,
-        request: BanMemberRequest,
+        request: RemoveUserRequest,
         *,
         headers: Headers | Mapping[str, str] | None = None, 
         timeout_ms: int | None = None,
-    ) -> BanMemberResponse:
+    ) -> RemoveUserResponse:
         """
-        Bans a member from a channel room. Direct-message rooms cannot be moderated
-        this way, and the target must currently be a room member.
+        Removes a current channel room member with a required reason. Requires
+        room.remove-member. Without suspension, ordinary join rules apply afterward.
+        Universal rooms require a suspension. Direct-message rooms are excluded.
         """
         return await self.execute_unary(
             request=request,
             method=MethodInfo(
-                name="BanMember",
+                name="RemoveUser",
                 service_name="chatto.api.v1.RoomService",
-                input=BanMemberRequest,
-                output=BanMemberResponse,
+                input=RemoveUserRequest,
+                output=RemoveUserResponse,
                 idempotency_level=IdempotencyLevel.UNKNOWN,
             ),
             headers=headers,
             timeout_ms=timeout_ms,
         )
 
-    async def unban_member(
+    async def lift_suspension(
         self,
-        request: UnbanMemberRequest,
+        request: LiftSuspensionRequest,
         *,
         headers: Headers | Mapping[str, str] | None = None, 
         timeout_ms: int | None = None,
-    ) -> UnbanMemberResponse:
+    ) -> LiftSuspensionResponse:
         """
-        Removes an active channel room ban. Calling this when no active ban exists
-        is allowed and still returns success.
+        Lifts an active channel room suspension. Requires room.remove-member.
+        Calling this when no active suspension exists succeeds.
         """
         return await self.execute_unary(
             request=request,
             method=MethodInfo(
-                name="UnbanMember",
+                name="LiftSuspension",
                 service_name="chatto.api.v1.RoomService",
-                input=UnbanMemberRequest,
-                output=UnbanMemberResponse,
+                input=LiftSuspensionRequest,
+                output=LiftSuspensionResponse,
                 idempotency_level=IdempotencyLevel.UNKNOWN,
             ),
             headers=headers,
@@ -1317,7 +1319,7 @@ class RoomServiceSync(Protocol):
         room or user.manage-accounts overrides the target's missing room.join.
         Bot owners and bot.manage holders may also add bots, but without either
         override the bot needs effective room.join, bounded by its owner's authority.
-        Preserves permission grants. Bans, archived, universal, and DM rooms prevent adding.
+        Preserves permission grants. Suspensions, archived, universal, and DM rooms prevent adding.
         """
         raise ConnectError(Code.UNIMPLEMENTED, 'Not implemented')
 
@@ -1330,10 +1332,10 @@ class RoomServiceSync(Protocol):
         """
         raise ConnectError(Code.UNIMPLEMENTED, 'Not implemented')
 
-    def list_bans(self, request: ListBansRequest, ctx: RequestContext[ListBansRequest, ListBansResponse], /) -> ListBansResponse:
+    def list_suspensions(self, request: ListSuspensionsRequest, ctx: RequestContext[ListSuspensionsRequest, ListSuspensionsResponse], /) -> ListSuspensionsResponse:
         """
-        Lists active channel room bans. The caller must be allowed to moderate room
-        membership bans.
+        Lists active channel room suspensions. Requires server-scope
+        room.remove-member.
         """
         raise ConnectError(Code.UNIMPLEMENTED, 'Not implemented')
 
@@ -1358,7 +1360,7 @@ class RoomServiceSync(Protocol):
 
     def create_pinned_message(self, request: CreatePinnedMessageRequest, ctx: RequestContext[CreatePinnedMessageRequest, CreatePinnedMessageResponse], /) -> CreatePinnedMessageResponse:
         """
-        Pins a current message. The caller must have room.manage and must be able
+        Pins a current message. The caller must have message.pin and must be able
         to read the message. Repeating an existing pin is idempotent. Direct-message
         rooms are rejected.
         """
@@ -1366,7 +1368,7 @@ class RoomServiceSync(Protocol):
 
     def delete_pinned_message(self, request: DeletePinnedMessageRequest, ctx: RequestContext[DeletePinnedMessageRequest, DeletePinnedMessageResponse], /) -> DeletePinnedMessageResponse:
         """
-        Removes a current pin. The caller must have room.manage. Removing a
+        Removes a current pin. The caller must have message.pin. Removing a
         missing pin is idempotent. Direct-message rooms are rejected.
         """
         raise ConnectError(Code.UNIMPLEMENTED, 'Not implemented')
@@ -1412,17 +1414,18 @@ class RoomServiceSync(Protocol):
         """
         raise ConnectError(Code.UNIMPLEMENTED, 'Not implemented')
 
-    def ban_member(self, request: BanMemberRequest, ctx: RequestContext[BanMemberRequest, BanMemberResponse], /) -> BanMemberResponse:
+    def remove_user(self, request: RemoveUserRequest, ctx: RequestContext[RemoveUserRequest, RemoveUserResponse], /) -> RemoveUserResponse:
         """
-        Bans a member from a channel room. Direct-message rooms cannot be moderated
-        this way, and the target must currently be a room member.
+        Removes a current channel room member with a required reason. Requires
+        room.remove-member. Without suspension, ordinary join rules apply afterward.
+        Universal rooms require a suspension. Direct-message rooms are excluded.
         """
         raise ConnectError(Code.UNIMPLEMENTED, 'Not implemented')
 
-    def unban_member(self, request: UnbanMemberRequest, ctx: RequestContext[UnbanMemberRequest, UnbanMemberResponse], /) -> UnbanMemberResponse:
+    def lift_suspension(self, request: LiftSuspensionRequest, ctx: RequestContext[LiftSuspensionRequest, LiftSuspensionResponse], /) -> LiftSuspensionResponse:
         """
-        Removes an active channel room ban. Calling this when no active ban exists
-        is allowed and still returns success.
+        Lifts an active channel room suspension. Requires room.remove-member.
+        Calling this when no active suspension exists succeeds.
         """
         raise ConnectError(Code.UNIMPLEMENTED, 'Not implemented')
 
@@ -1592,15 +1595,15 @@ class RoomServiceWSGIApplication(ConnectWSGIApplication):
                     ),
                     function=service.remove_member,
                 ),
-                "/chatto.api.v1.RoomService/ListBans": EndpointSync.unary(
+                "/chatto.api.v1.RoomService/ListSuspensions": EndpointSync.unary(
                     method=MethodInfo(
-                        name="ListBans",
+                        name="ListSuspensions",
                         service_name="chatto.api.v1.RoomService",
-                        input=ListBansRequest,
-                        output=ListBansResponse,
+                        input=ListSuspensionsRequest,
+                        output=ListSuspensionsResponse,
                         idempotency_level=IdempotencyLevel.UNKNOWN,
                     ),
-                    function=service.list_bans,
+                    function=service.list_suspensions,
                 ),
                 "/chatto.api.v1.RoomService/ListRoomAttachments": EndpointSync.unary(
                     method=MethodInfo(
@@ -1682,25 +1685,25 @@ class RoomServiceWSGIApplication(ConnectWSGIApplication):
                     ),
                     function=service.mark_room_as_read,
                 ),
-                "/chatto.api.v1.RoomService/BanMember": EndpointSync.unary(
+                "/chatto.api.v1.RoomService/RemoveUser": EndpointSync.unary(
                     method=MethodInfo(
-                        name="BanMember",
+                        name="RemoveUser",
                         service_name="chatto.api.v1.RoomService",
-                        input=BanMemberRequest,
-                        output=BanMemberResponse,
+                        input=RemoveUserRequest,
+                        output=RemoveUserResponse,
                         idempotency_level=IdempotencyLevel.UNKNOWN,
                     ),
-                    function=service.ban_member,
+                    function=service.remove_user,
                 ),
-                "/chatto.api.v1.RoomService/UnbanMember": EndpointSync.unary(
+                "/chatto.api.v1.RoomService/LiftSuspension": EndpointSync.unary(
                     method=MethodInfo(
-                        name="UnbanMember",
+                        name="LiftSuspension",
                         service_name="chatto.api.v1.RoomService",
-                        input=UnbanMemberRequest,
-                        output=UnbanMemberResponse,
+                        input=LiftSuspensionRequest,
+                        output=LiftSuspensionResponse,
                         idempotency_level=IdempotencyLevel.UNKNOWN,
                     ),
-                    function=service.unban_member,
+                    function=service.lift_suspension,
                 ),
             },
             interceptors=interceptors,
@@ -2041,7 +2044,7 @@ class RoomServiceClientSync(ConnectClientSync):
         room or user.manage-accounts overrides the target's missing room.join.
         Bot owners and bot.manage holders may also add bots, but without either
         override the bot needs effective room.join, bounded by its owner's authority.
-        Preserves permission grants. Bans, archived, universal, and DM rooms prevent adding.
+        Preserves permission grants. Suspensions, archived, universal, and DM rooms prevent adding.
         """
         return self.execute_unary(
             request=request,
@@ -2080,24 +2083,24 @@ class RoomServiceClientSync(ConnectClientSync):
             headers=headers,
             timeout_ms=timeout_ms,
         )
-    def list_bans(
+    def list_suspensions(
         self,
-        request: ListBansRequest,
+        request: ListSuspensionsRequest,
         *,
         headers: Headers | Mapping[str, str] | None = None, 
         timeout_ms: int | None = None,
-    ) -> ListBansResponse:
+    ) -> ListSuspensionsResponse:
         """
-        Lists active channel room bans. The caller must be allowed to moderate room
-        membership bans.
+        Lists active channel room suspensions. Requires server-scope
+        room.remove-member.
         """
         return self.execute_unary(
             request=request,
             method=MethodInfo(
-                name="ListBans",
+                name="ListSuspensions",
                 service_name="chatto.api.v1.RoomService",
-                input=ListBansRequest,
-                output=ListBansResponse,
+                input=ListSuspensionsRequest,
+                output=ListSuspensionsResponse,
                 idempotency_level=IdempotencyLevel.UNKNOWN,
             ),
             headers=headers,
@@ -2162,7 +2165,7 @@ class RoomServiceClientSync(ConnectClientSync):
         timeout_ms: int | None = None,
     ) -> CreatePinnedMessageResponse:
         """
-        Pins a current message. The caller must have room.manage and must be able
+        Pins a current message. The caller must have message.pin and must be able
         to read the message. Repeating an existing pin is idempotent. Direct-message
         rooms are rejected.
         """
@@ -2186,7 +2189,7 @@ class RoomServiceClientSync(ConnectClientSync):
         timeout_ms: int | None = None,
     ) -> DeletePinnedMessageResponse:
         """
-        Removes a current pin. The caller must have room.manage. Removing a
+        Removes a current pin. The caller must have message.pin. Removing a
         missing pin is idempotent. Direct-message rooms are rejected.
         """
         return self.execute_unary(
@@ -2306,47 +2309,48 @@ class RoomServiceClientSync(ConnectClientSync):
             headers=headers,
             timeout_ms=timeout_ms,
         )
-    def ban_member(
+    def remove_user(
         self,
-        request: BanMemberRequest,
+        request: RemoveUserRequest,
         *,
         headers: Headers | Mapping[str, str] | None = None, 
         timeout_ms: int | None = None,
-    ) -> BanMemberResponse:
+    ) -> RemoveUserResponse:
         """
-        Bans a member from a channel room. Direct-message rooms cannot be moderated
-        this way, and the target must currently be a room member.
+        Removes a current channel room member with a required reason. Requires
+        room.remove-member. Without suspension, ordinary join rules apply afterward.
+        Universal rooms require a suspension. Direct-message rooms are excluded.
         """
         return self.execute_unary(
             request=request,
             method=MethodInfo(
-                name="BanMember",
+                name="RemoveUser",
                 service_name="chatto.api.v1.RoomService",
-                input=BanMemberRequest,
-                output=BanMemberResponse,
+                input=RemoveUserRequest,
+                output=RemoveUserResponse,
                 idempotency_level=IdempotencyLevel.UNKNOWN,
             ),
             headers=headers,
             timeout_ms=timeout_ms,
         )
-    def unban_member(
+    def lift_suspension(
         self,
-        request: UnbanMemberRequest,
+        request: LiftSuspensionRequest,
         *,
         headers: Headers | Mapping[str, str] | None = None, 
         timeout_ms: int | None = None,
-    ) -> UnbanMemberResponse:
+    ) -> LiftSuspensionResponse:
         """
-        Removes an active channel room ban. Calling this when no active ban exists
-        is allowed and still returns success.
+        Lifts an active channel room suspension. Requires room.remove-member.
+        Calling this when no active suspension exists succeeds.
         """
         return self.execute_unary(
             request=request,
             method=MethodInfo(
-                name="UnbanMember",
+                name="LiftSuspension",
                 service_name="chatto.api.v1.RoomService",
-                input=UnbanMemberRequest,
-                output=UnbanMemberResponse,
+                input=LiftSuspensionRequest,
+                output=LiftSuspensionResponse,
                 idempotency_level=IdempotencyLevel.UNKNOWN,
             ),
             headers=headers,

@@ -16,7 +16,7 @@ from connectrpc.server import ConnectASGIApplication, ConnectWSGIApplication, DE
 from protobuf import DescService
 
 from . import account_pb
-from .account_pb import ChangePasswordRequest, ChangePasswordResponse, ConfirmEmailVerificationRequest, ConfirmEmailVerificationResponse, DeleteMyAccountRequest, DeleteMyAccountResponse, GetSettingsRequest, GetSettingsResponse, ListVerifiedEmailsRequest, ListVerifiedEmailsResponse, RequestAccountDeletionRequest, RequestAccountDeletionResponse, RequestEmailVerificationRequest, RequestEmailVerificationResponse, SetPrimaryEmailRequest, SetPrimaryEmailResponse, UpdateProfileRequest, UpdateProfileResponse, UpdateSettingsRequest, UpdateSettingsResponse
+from .account_pb import ChangePasswordRequest, ChangePasswordResponse, ConfirmEmailVerificationRequest, ConfirmEmailVerificationResponse, DeleteMyAccountRequest, DeleteMyAccountResponse, GetSettingsRequest, GetSettingsResponse, ListVerifiedEmailsRequest, ListVerifiedEmailsResponse, RequestAccountDeletionRequest, RequestAccountDeletionResponse, RequestEmailVerificationRequest, RequestEmailVerificationResponse, SetPrimaryEmailRequest, SetPrimaryEmailResponse, UpdateSettingsRequest, UpdateSettingsResponse
 from .external_identities_pb import DisconnectExternalIdentityRequest, DisconnectExternalIdentityResponse, ListExternalIdentitiesRequest, ListExternalIdentitiesResponse, StartExternalIdentityLinkRequest, StartExternalIdentityLinkResponse
 from .presence_pb import GetPresencePreferenceRequest, GetPresencePreferenceResponse, RefreshPresenceRequest, RefreshPresenceResponse, SetPresencePreferenceRequest, SetPresencePreferenceResponse, SetPresenceRequest, SetPresenceResponse
 from .user_status_pb import DeleteCustomStatusRequest, DeleteCustomStatusResponse, SetCustomStatusRequest, SetCustomStatusResponse
@@ -32,16 +32,10 @@ if TYPE_CHECKING:
 
 class MyAccountService(Protocol):
     """
-    Self-service account, profile, display preference, presence,
-    custom-status, external identity, and account lifecycle commands for the
-    authenticated user.
+    Self-service account, display preference, presence, custom-status,
+    external identity, and account lifecycle commands for the authenticated
+    user. Public profile and avatar changes use UserService.
     """
-    async def update_profile(self, request: UpdateProfileRequest, ctx: RequestContext[UpdateProfileRequest, UpdateProfileResponse], /) -> UpdateProfileResponse:
-        """
-        Updates the authenticated user's login, display name, and/or bio.
-        """
-        raise ConnectError(Code.UNIMPLEMENTED, 'Not implemented')
-
     async def change_password(self, request: ChangePasswordRequest, ctx: RequestContext[ChangePasswordRequest, ChangePasswordResponse], /) -> ChangePasswordResponse:
         """
         Updates or adds the authenticated user's password.
@@ -197,16 +191,6 @@ class MyAccountServiceASGIApplication(ConnectASGIApplication[MyAccountService]):
         super().__init__(
             service=service,
             endpoints=lambda svc: {
-                "/chatto.api.v1.MyAccountService/UpdateProfile": Endpoint.unary(
-                    method=MethodInfo(
-                        name="UpdateProfile",
-                        service_name="chatto.api.v1.MyAccountService",
-                        input=UpdateProfileRequest,
-                        output=UpdateProfileResponse,
-                        idempotency_level=IdempotencyLevel.UNKNOWN,
-                    ),
-                    function=svc.update_profile,
-                ),
                 "/chatto.api.v1.MyAccountService/ChangePassword": Endpoint.unary(
                     method=MethodInfo(
                         name="ChangePassword",
@@ -402,33 +386,10 @@ class MyAccountServiceASGIApplication(ConnectASGIApplication[MyAccountService]):
 
 class MyAccountServiceClient(ConnectClient):
     """
-    Self-service account, profile, display preference, presence,
-    custom-status, external identity, and account lifecycle commands for the
-    authenticated user.
+    Self-service account, display preference, presence, custom-status,
+    external identity, and account lifecycle commands for the authenticated
+    user. Public profile and avatar changes use UserService.
     """
-    async def update_profile(
-        self,
-        request: UpdateProfileRequest,
-        *,
-        headers: Headers | Mapping[str, str] | None = None, 
-        timeout_ms: int | None = None,
-    ) -> UpdateProfileResponse:
-        """
-        Updates the authenticated user's login, display name, and/or bio.
-        """
-        return await self.execute_unary(
-            request=request,
-            method=MethodInfo(
-                name="UpdateProfile",
-                service_name="chatto.api.v1.MyAccountService",
-                input=UpdateProfileRequest,
-                output=UpdateProfileResponse,
-                idempotency_level=IdempotencyLevel.UNKNOWN,
-            ),
-            headers=headers,
-            timeout_ms=timeout_ms,
-        )
-
     async def change_password(
         self,
         request: ChangePasswordRequest,
@@ -876,16 +837,10 @@ class MyAccountServiceClient(ConnectClient):
 
 class MyAccountServiceSync(Protocol):
     """
-    Self-service account, profile, display preference, presence,
-    custom-status, external identity, and account lifecycle commands for the
-    authenticated user.
+    Self-service account, display preference, presence, custom-status,
+    external identity, and account lifecycle commands for the authenticated
+    user. Public profile and avatar changes use UserService.
     """
-    def update_profile(self, request: UpdateProfileRequest, ctx: RequestContext[UpdateProfileRequest, UpdateProfileResponse], /) -> UpdateProfileResponse:
-        """
-        Updates the authenticated user's login, display name, and/or bio.
-        """
-        raise ConnectError(Code.UNIMPLEMENTED, 'Not implemented')
-
     def change_password(self, request: ChangePasswordRequest, ctx: RequestContext[ChangePasswordRequest, ChangePasswordResponse], /) -> ChangePasswordResponse:
         """
         Updates or adds the authenticated user's password.
@@ -1039,16 +994,6 @@ class MyAccountServiceWSGIApplication(ConnectWSGIApplication):
     ) -> None:
         super().__init__(
             endpoints={
-                "/chatto.api.v1.MyAccountService/UpdateProfile": EndpointSync.unary(
-                    method=MethodInfo(
-                        name="UpdateProfile",
-                        service_name="chatto.api.v1.MyAccountService",
-                        input=UpdateProfileRequest,
-                        output=UpdateProfileResponse,
-                        idempotency_level=IdempotencyLevel.UNKNOWN,
-                    ),
-                    function=service.update_profile,
-                ),
                 "/chatto.api.v1.MyAccountService/ChangePassword": EndpointSync.unary(
                     method=MethodInfo(
                         name="ChangePassword",
@@ -1244,32 +1189,10 @@ class MyAccountServiceWSGIApplication(ConnectWSGIApplication):
 
 class MyAccountServiceClientSync(ConnectClientSync):
     """
-    Self-service account, profile, display preference, presence,
-    custom-status, external identity, and account lifecycle commands for the
-    authenticated user.
+    Self-service account, display preference, presence, custom-status,
+    external identity, and account lifecycle commands for the authenticated
+    user. Public profile and avatar changes use UserService.
     """
-    def update_profile(
-        self,
-        request: UpdateProfileRequest,
-        *,
-        headers: Headers | Mapping[str, str] | None = None, 
-        timeout_ms: int | None = None,
-    ) -> UpdateProfileResponse:
-        """
-        Updates the authenticated user's login, display name, and/or bio.
-        """
-        return self.execute_unary(
-            request=request,
-            method=MethodInfo(
-                name="UpdateProfile",
-                service_name="chatto.api.v1.MyAccountService",
-                input=UpdateProfileRequest,
-                output=UpdateProfileResponse,
-                idempotency_level=IdempotencyLevel.UNKNOWN,
-            ),
-            headers=headers,
-            timeout_ms=timeout_ms,
-        )
     def change_password(
         self,
         request: ChangePasswordRequest,

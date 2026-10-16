@@ -16,7 +16,7 @@ from connectrpc.server import ConnectASGIApplication, ConnectWSGIApplication, DE
 from protobuf import DescService
 
 from . import user_service_pb
-from .user_service_pb import BatchGetUsersRequest, BatchGetUsersResponse, DeleteAvatarRequest, DeleteAvatarResponse, GetUserRequest, GetUserResponse, ListUsersRequest, ListUsersResponse, UploadAvatarRequest, UploadAvatarResponse
+from .user_service_pb import BatchGetUsersRequest, BatchGetUsersResponse, DeleteAvatarRequest, DeleteAvatarResponse, GetUserRequest, GetUserResponse, ListUsersRequest, ListUsersResponse, UpdateUserProfileRequest, UpdateUserProfileResponse, UploadAvatarRequest, UploadAvatarResponse
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Iterable, Mapping
@@ -29,7 +29,7 @@ if TYPE_CHECKING:
 
 class UserService(Protocol):
     """
-    Reads users and manages public user avatars.
+    Reads users and manages public user profiles and avatars.
     """
     async def list_users(self, request: ListUsersRequest, ctx: RequestContext[ListUsersRequest, ListUsersResponse], /) -> ListUsersResponse:
         """
@@ -52,11 +52,28 @@ class UserService(Protocol):
         """
         raise ConnectError(Code.UNIMPLEMENTED, 'Not implemented')
 
+    async def update_user_profile(self, request: UpdateUserProfileRequest, ctx: RequestContext[UpdateUserProfileRequest, UpdateUserProfileResponse], /) -> UpdateUserProfileResponse:
+        """
+        Updates the target user's login, display name, and/or bio. Users can
+        update themselves. Updating another human requires user.manage-accounts.
+        A human who updates a bot needs ownership of the bot,
+        user.manage-accounts, or bot.manage. A bot cannot target another account.
+        A login change returns FAILED_PRECONDITION while the target's
+        username-change cooldown is active. A successful login change starts a
+        new cooldown. This also applies when a bot owner or bot manager changes a
+        bot's login. A caller with user.manage-accounts bypasses the cooldown and
+        does not start it. A case-only change does not check or start the
+        cooldown. Unknown or deleted targets return NOT_FOUND. An invalid ID or a
+        request without a selected field returns INVALID_ARGUMENT.
+        """
+        raise ConnectError(Code.UNIMPLEMENTED, 'Not implemented')
+
     async def upload_avatar(self, request: UploadAvatarRequest, ctx: RequestContext[UploadAvatarRequest, UploadAvatarResponse], /) -> UploadAvatarResponse:
         """
         Uploads and sets an avatar for the target user. Users can update
         themselves. Updating another human requires user.manage-accounts.
-        Updating a bot requires ownership, user.manage-accounts, or bot.manage.
+        A human who updates a bot needs ownership of the bot,
+        user.manage-accounts, or bot.manage.
         A bot cannot target another account. Unknown or deleted targets return
         NOT_FOUND. Invalid IDs or missing images return INVALID_ARGUMENT.
         """
@@ -118,6 +135,16 @@ class UserServiceASGIApplication(ConnectASGIApplication[UserService]):
                     ),
                     function=svc.batch_get_users,
                 ),
+                "/chatto.api.v1.UserService/UpdateUserProfile": Endpoint.unary(
+                    method=MethodInfo(
+                        name="UpdateUserProfile",
+                        service_name="chatto.api.v1.UserService",
+                        input=UpdateUserProfileRequest,
+                        output=UpdateUserProfileResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=svc.update_user_profile,
+                ),
                 "/chatto.api.v1.UserService/UploadAvatar": Endpoint.unary(
                     method=MethodInfo(
                         name="UploadAvatar",
@@ -153,7 +180,7 @@ class UserServiceASGIApplication(ConnectASGIApplication[UserService]):
 
 class UserServiceClient(ConnectClient):
     """
-    Reads users and manages public user avatars.
+    Reads users and manages public user profiles and avatars.
     """
     async def list_users(
         self,
@@ -227,6 +254,39 @@ class UserServiceClient(ConnectClient):
             timeout_ms=timeout_ms,
         )
 
+    async def update_user_profile(
+        self,
+        request: UpdateUserProfileRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None, 
+        timeout_ms: int | None = None,
+    ) -> UpdateUserProfileResponse:
+        """
+        Updates the target user's login, display name, and/or bio. Users can
+        update themselves. Updating another human requires user.manage-accounts.
+        A human who updates a bot needs ownership of the bot,
+        user.manage-accounts, or bot.manage. A bot cannot target another account.
+        A login change returns FAILED_PRECONDITION while the target's
+        username-change cooldown is active. A successful login change starts a
+        new cooldown. This also applies when a bot owner or bot manager changes a
+        bot's login. A caller with user.manage-accounts bypasses the cooldown and
+        does not start it. A case-only change does not check or start the
+        cooldown. Unknown or deleted targets return NOT_FOUND. An invalid ID or a
+        request without a selected field returns INVALID_ARGUMENT.
+        """
+        return await self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="UpdateUserProfile",
+                service_name="chatto.api.v1.UserService",
+                input=UpdateUserProfileRequest,
+                output=UpdateUserProfileResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
     async def upload_avatar(
         self,
         request: UploadAvatarRequest,
@@ -237,7 +297,8 @@ class UserServiceClient(ConnectClient):
         """
         Uploads and sets an avatar for the target user. Users can update
         themselves. Updating another human requires user.manage-accounts.
-        Updating a bot requires ownership, user.manage-accounts, or bot.manage.
+        A human who updates a bot needs ownership of the bot,
+        user.manage-accounts, or bot.manage.
         A bot cannot target another account. Unknown or deleted targets return
         NOT_FOUND. Invalid IDs or missing images return INVALID_ARGUMENT.
         """
@@ -281,7 +342,7 @@ class UserServiceClient(ConnectClient):
 
 class UserServiceSync(Protocol):
     """
-    Reads users and manages public user avatars.
+    Reads users and manages public user profiles and avatars.
     """
     def list_users(self, request: ListUsersRequest, ctx: RequestContext[ListUsersRequest, ListUsersResponse], /) -> ListUsersResponse:
         """
@@ -304,11 +365,28 @@ class UserServiceSync(Protocol):
         """
         raise ConnectError(Code.UNIMPLEMENTED, 'Not implemented')
 
+    def update_user_profile(self, request: UpdateUserProfileRequest, ctx: RequestContext[UpdateUserProfileRequest, UpdateUserProfileResponse], /) -> UpdateUserProfileResponse:
+        """
+        Updates the target user's login, display name, and/or bio. Users can
+        update themselves. Updating another human requires user.manage-accounts.
+        A human who updates a bot needs ownership of the bot,
+        user.manage-accounts, or bot.manage. A bot cannot target another account.
+        A login change returns FAILED_PRECONDITION while the target's
+        username-change cooldown is active. A successful login change starts a
+        new cooldown. This also applies when a bot owner or bot manager changes a
+        bot's login. A caller with user.manage-accounts bypasses the cooldown and
+        does not start it. A case-only change does not check or start the
+        cooldown. Unknown or deleted targets return NOT_FOUND. An invalid ID or a
+        request without a selected field returns INVALID_ARGUMENT.
+        """
+        raise ConnectError(Code.UNIMPLEMENTED, 'Not implemented')
+
     def upload_avatar(self, request: UploadAvatarRequest, ctx: RequestContext[UploadAvatarRequest, UploadAvatarResponse], /) -> UploadAvatarResponse:
         """
         Uploads and sets an avatar for the target user. Users can update
         themselves. Updating another human requires user.manage-accounts.
-        Updating a bot requires ownership, user.manage-accounts, or bot.manage.
+        A human who updates a bot needs ownership of the bot,
+        user.manage-accounts, or bot.manage.
         A bot cannot target another account. Unknown or deleted targets return
         NOT_FOUND. Invalid IDs or missing images return INVALID_ARGUMENT.
         """
@@ -368,6 +446,16 @@ class UserServiceWSGIApplication(ConnectWSGIApplication):
                     ),
                     function=service.batch_get_users,
                 ),
+                "/chatto.api.v1.UserService/UpdateUserProfile": EndpointSync.unary(
+                    method=MethodInfo(
+                        name="UpdateUserProfile",
+                        service_name="chatto.api.v1.UserService",
+                        input=UpdateUserProfileRequest,
+                        output=UpdateUserProfileResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=service.update_user_profile,
+                ),
                 "/chatto.api.v1.UserService/UploadAvatar": EndpointSync.unary(
                     method=MethodInfo(
                         name="UploadAvatar",
@@ -403,7 +491,7 @@ class UserServiceWSGIApplication(ConnectWSGIApplication):
 
 class UserServiceClientSync(ConnectClientSync):
     """
-    Reads users and manages public user avatars.
+    Reads users and manages public user profiles and avatars.
     """
     def list_users(
         self,
@@ -474,6 +562,38 @@ class UserServiceClientSync(ConnectClientSync):
             headers=headers,
             timeout_ms=timeout_ms,
         )
+    def update_user_profile(
+        self,
+        request: UpdateUserProfileRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None, 
+        timeout_ms: int | None = None,
+    ) -> UpdateUserProfileResponse:
+        """
+        Updates the target user's login, display name, and/or bio. Users can
+        update themselves. Updating another human requires user.manage-accounts.
+        A human who updates a bot needs ownership of the bot,
+        user.manage-accounts, or bot.manage. A bot cannot target another account.
+        A login change returns FAILED_PRECONDITION while the target's
+        username-change cooldown is active. A successful login change starts a
+        new cooldown. This also applies when a bot owner or bot manager changes a
+        bot's login. A caller with user.manage-accounts bypasses the cooldown and
+        does not start it. A case-only change does not check or start the
+        cooldown. Unknown or deleted targets return NOT_FOUND. An invalid ID or a
+        request without a selected field returns INVALID_ARGUMENT.
+        """
+        return self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="UpdateUserProfile",
+                service_name="chatto.api.v1.UserService",
+                input=UpdateUserProfileRequest,
+                output=UpdateUserProfileResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
     def upload_avatar(
         self,
         request: UploadAvatarRequest,
@@ -484,7 +604,8 @@ class UserServiceClientSync(ConnectClientSync):
         """
         Uploads and sets an avatar for the target user. Users can update
         themselves. Updating another human requires user.manage-accounts.
-        Updating a bot requires ownership, user.manage-accounts, or bot.manage.
+        A human who updates a bot needs ownership of the bot,
+        user.manage-accounts, or bot.manage.
         A bot cannot target another account. Unknown or deleted targets return
         NOT_FOUND. Invalid IDs or missing images return INVALID_ARGUMENT.
         """

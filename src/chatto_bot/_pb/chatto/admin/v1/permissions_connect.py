@@ -30,10 +30,10 @@ if TYPE_CHECKING:
 class AdminPermissionService(Protocol):
     """
     Provides permission reads and admin permission writes.
-    Matrix and decision pages use the same scope order: SERVER, DM, then each GROUP
-    followed by its ROOM scopes. Groups and rooms within each group use ascending
-    resource IDs. Only requested scopes are evaluated.
-    Pages are live reads; layout or visibility changes can shift offsets. Keep the
+    Matrices return all matching scopes. Decision lists return scope pages.
+    Both use the order SERVER, DM, then each GROUP followed by its ROOM scopes.
+    Groups and rooms follow the configured sidebar order. Only matching scopes are evaluated.
+    Decision pages are live reads; layout or visibility changes can shift offsets. Keep the
     same filters on each request and advance by the number of returned scopes.
     A scope filter of DM selects DM even when include_direct_message_scope is false.
     """
@@ -47,7 +47,7 @@ class AdminPermissionService(Protocol):
 
     async def get_role_permission_matrix(self, request: GetRolePermissionMatrixRequest, ctx: RequestContext[GetRolePermissionMatrixRequest, GetRolePermissionMatrixResponse], /) -> GetRolePermissionMatrixResponse:
         """
-        Gets one page of a role's permission matrix. Requires role.manage. Returns
+        Gets a complete role permission matrix. Requires role.manage. Returns
         NOT_FOUND when the role does not exist.
         """
         raise ConnectError(Code.UNIMPLEMENTED, 'Not implemented')
@@ -61,7 +61,7 @@ class AdminPermissionService(Protocol):
 
     async def get_user_permission_matrix(self, request: GetUserPermissionMatrixRequest, ctx: RequestContext[GetUserPermissionMatrixRequest, GetUserPermissionMatrixResponse], /) -> GetUserPermissionMatrixResponse:
         """
-        Gets one page of a user's permission matrix. Human targets require
+        Gets a complete user permission matrix. Human targets require
         user.manage-permissions; bot targets require ownership or bot.manage.
         Returns NOT_FOUND when the user does not exist.
         """
@@ -210,10 +210,10 @@ class AdminPermissionServiceASGIApplication(ConnectASGIApplication[AdminPermissi
 class AdminPermissionServiceClient(ConnectClient):
     """
     Provides permission reads and admin permission writes.
-    Matrix and decision pages use the same scope order: SERVER, DM, then each GROUP
-    followed by its ROOM scopes. Groups and rooms within each group use ascending
-    resource IDs. Only requested scopes are evaluated.
-    Pages are live reads; layout or visibility changes can shift offsets. Keep the
+    Matrices return all matching scopes. Decision lists return scope pages.
+    Both use the order SERVER, DM, then each GROUP followed by its ROOM scopes.
+    Groups and rooms follow the configured sidebar order. Only matching scopes are evaluated.
+    Decision pages are live reads; layout or visibility changes can shift offsets. Keep the
     same filters on each request and advance by the number of returned scopes.
     A scope filter of DM selects DM even when include_direct_message_scope is false.
     """
@@ -250,7 +250,7 @@ class AdminPermissionServiceClient(ConnectClient):
         timeout_ms: int | None = None,
     ) -> GetRolePermissionMatrixResponse:
         """
-        Gets one page of a role's permission matrix. Requires role.manage. Returns
+        Gets a complete role permission matrix. Requires role.manage. Returns
         NOT_FOUND when the role does not exist.
         """
         return await self.execute_unary(
@@ -298,7 +298,7 @@ class AdminPermissionServiceClient(ConnectClient):
         timeout_ms: int | None = None,
     ) -> GetUserPermissionMatrixResponse:
         """
-        Gets one page of a user's permission matrix. Human targets require
+        Gets a complete user permission matrix. Human targets require
         user.manage-permissions; bot targets require ownership or bot.manage.
         Returns NOT_FOUND when the user does not exist.
         """
@@ -415,10 +415,10 @@ class AdminPermissionServiceClient(ConnectClient):
 class AdminPermissionServiceSync(Protocol):
     """
     Provides permission reads and admin permission writes.
-    Matrix and decision pages use the same scope order: SERVER, DM, then each GROUP
-    followed by its ROOM scopes. Groups and rooms within each group use ascending
-    resource IDs. Only requested scopes are evaluated.
-    Pages are live reads; layout or visibility changes can shift offsets. Keep the
+    Matrices return all matching scopes. Decision lists return scope pages.
+    Both use the order SERVER, DM, then each GROUP followed by its ROOM scopes.
+    Groups and rooms follow the configured sidebar order. Only matching scopes are evaluated.
+    Decision pages are live reads; layout or visibility changes can shift offsets. Keep the
     same filters on each request and advance by the number of returned scopes.
     A scope filter of DM selects DM even when include_direct_message_scope is false.
     """
@@ -432,7 +432,7 @@ class AdminPermissionServiceSync(Protocol):
 
     def get_role_permission_matrix(self, request: GetRolePermissionMatrixRequest, ctx: RequestContext[GetRolePermissionMatrixRequest, GetRolePermissionMatrixResponse], /) -> GetRolePermissionMatrixResponse:
         """
-        Gets one page of a role's permission matrix. Requires role.manage. Returns
+        Gets a complete role permission matrix. Requires role.manage. Returns
         NOT_FOUND when the role does not exist.
         """
         raise ConnectError(Code.UNIMPLEMENTED, 'Not implemented')
@@ -446,7 +446,7 @@ class AdminPermissionServiceSync(Protocol):
 
     def get_user_permission_matrix(self, request: GetUserPermissionMatrixRequest, ctx: RequestContext[GetUserPermissionMatrixRequest, GetUserPermissionMatrixResponse], /) -> GetUserPermissionMatrixResponse:
         """
-        Gets one page of a user's permission matrix. Human targets require
+        Gets a complete user permission matrix. Human targets require
         user.manage-permissions; bot targets require ownership or bot.manage.
         Returns NOT_FOUND when the user does not exist.
         """
@@ -593,10 +593,10 @@ class AdminPermissionServiceWSGIApplication(ConnectWSGIApplication):
 class AdminPermissionServiceClientSync(ConnectClientSync):
     """
     Provides permission reads and admin permission writes.
-    Matrix and decision pages use the same scope order: SERVER, DM, then each GROUP
-    followed by its ROOM scopes. Groups and rooms within each group use ascending
-    resource IDs. Only requested scopes are evaluated.
-    Pages are live reads; layout or visibility changes can shift offsets. Keep the
+    Matrices return all matching scopes. Decision lists return scope pages.
+    Both use the order SERVER, DM, then each GROUP followed by its ROOM scopes.
+    Groups and rooms follow the configured sidebar order. Only matching scopes are evaluated.
+    Decision pages are live reads; layout or visibility changes can shift offsets. Keep the
     same filters on each request and advance by the number of returned scopes.
     A scope filter of DM selects DM even when include_direct_message_scope is false.
     """
@@ -632,7 +632,7 @@ class AdminPermissionServiceClientSync(ConnectClientSync):
         timeout_ms: int | None = None,
     ) -> GetRolePermissionMatrixResponse:
         """
-        Gets one page of a role's permission matrix. Requires role.manage. Returns
+        Gets a complete role permission matrix. Requires role.manage. Returns
         NOT_FOUND when the role does not exist.
         """
         return self.execute_unary(
@@ -678,7 +678,7 @@ class AdminPermissionServiceClientSync(ConnectClientSync):
         timeout_ms: int | None = None,
     ) -> GetUserPermissionMatrixResponse:
         """
-        Gets one page of a user's permission matrix. Human targets require
+        Gets a complete user permission matrix. Human targets require
         user.manage-permissions; bot targets require ownership or bot.manage.
         Returns NOT_FOUND when the user does not exist.
         """

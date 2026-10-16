@@ -16,7 +16,7 @@ from connectrpc.server import ConnectASGIApplication, ConnectWSGIApplication, DE
 from protobuf import DescService
 
 from . import members_pb
-from .members_pb import AssignRoleRequest, AssignRoleResponse, BatchGetMembersRequest, BatchGetMembersResponse, ChangeUserPasswordRequest, ChangeUserPasswordResponse, ClearUsernameCooldownRequest, ClearUsernameCooldownResponse, DeleteUserRequest, DeleteUserResponse, GetMemberRequest, GetMemberResponse, ListMembersRequest, ListMembersResponse, RevokeRoleRequest, RevokeRoleResponse, UpdateUserRequest, UpdateUserResponse
+from .members_pb import AssignRoleRequest, AssignRoleResponse, BatchGetMembersRequest, BatchGetMembersResponse, ChangeUserPasswordRequest, ChangeUserPasswordResponse, ClearUsernameCooldownRequest, ClearUsernameCooldownResponse, DeleteUserRequest, DeleteUserResponse, GetMemberRequest, GetMemberResponse, ListMembersRequest, ListMembersResponse, RevokeRoleRequest, RevokeRoleResponse
 
 if TYPE_CHECKING:
     from collections.abc import AsyncGenerator, Iterable, Mapping
@@ -62,14 +62,6 @@ class AdminUserService(Protocol):
         """
         Revokes a role from a user. Requires role.assign, and non-owner callers may
         only revoke roles whose permission decisions are within their authority.
-        """
-        raise ConnectError(Code.UNIMPLEMENTED, 'Not implemented')
-
-    async def update_user(self, request: UpdateUserRequest, ctx: RequestContext[UpdateUserRequest, UpdateUserResponse], /) -> UpdateUserResponse:
-        """
-        Updates a human user's login and/or display name without applying the
-        username-change cooldown. Requires user.manage-accounts, including when
-        the caller targets their own account. Preserves the cooldown timestamp.
         """
         raise ConnectError(Code.UNIMPLEMENTED, 'Not implemented')
 
@@ -162,16 +154,6 @@ class AdminUserServiceASGIApplication(ConnectASGIApplication[AdminUserService]):
                         idempotency_level=IdempotencyLevel.UNKNOWN,
                     ),
                     function=svc.revoke_role,
-                ),
-                "/chatto.admin.v1.AdminUserService/UpdateUser": Endpoint.unary(
-                    method=MethodInfo(
-                        name="UpdateUser",
-                        service_name="chatto.admin.v1.AdminUserService",
-                        input=UpdateUserRequest,
-                        output=UpdateUserResponse,
-                        idempotency_level=IdempotencyLevel.UNKNOWN,
-                    ),
-                    function=svc.update_user,
                 ),
                 "/chatto.admin.v1.AdminUserService/ChangeUserPassword": Endpoint.unary(
                     method=MethodInfo(
@@ -339,31 +321,6 @@ class AdminUserServiceClient(ConnectClient):
             timeout_ms=timeout_ms,
         )
 
-    async def update_user(
-        self,
-        request: UpdateUserRequest,
-        *,
-        headers: Headers | Mapping[str, str] | None = None, 
-        timeout_ms: int | None = None,
-    ) -> UpdateUserResponse:
-        """
-        Updates a human user's login and/or display name without applying the
-        username-change cooldown. Requires user.manage-accounts, including when
-        the caller targets their own account. Preserves the cooldown timestamp.
-        """
-        return await self.execute_unary(
-            request=request,
-            method=MethodInfo(
-                name="UpdateUser",
-                service_name="chatto.admin.v1.AdminUserService",
-                input=UpdateUserRequest,
-                output=UpdateUserResponse,
-                idempotency_level=IdempotencyLevel.UNKNOWN,
-            ),
-            headers=headers,
-            timeout_ms=timeout_ms,
-        )
-
     async def change_user_password(
         self,
         request: ChangeUserPasswordRequest,
@@ -475,14 +432,6 @@ class AdminUserServiceSync(Protocol):
         """
         raise ConnectError(Code.UNIMPLEMENTED, 'Not implemented')
 
-    def update_user(self, request: UpdateUserRequest, ctx: RequestContext[UpdateUserRequest, UpdateUserResponse], /) -> UpdateUserResponse:
-        """
-        Updates a human user's login and/or display name without applying the
-        username-change cooldown. Requires user.manage-accounts, including when
-        the caller targets their own account. Preserves the cooldown timestamp.
-        """
-        raise ConnectError(Code.UNIMPLEMENTED, 'Not implemented')
-
     def change_user_password(self, request: ChangeUserPasswordRequest, ctx: RequestContext[ChangeUserPasswordRequest, ChangeUserPasswordResponse], /) -> ChangeUserPasswordResponse:
         """
         Updates another user's password as an admin action. Requires
@@ -570,16 +519,6 @@ class AdminUserServiceWSGIApplication(ConnectWSGIApplication):
                         idempotency_level=IdempotencyLevel.UNKNOWN,
                     ),
                     function=service.revoke_role,
-                ),
-                "/chatto.admin.v1.AdminUserService/UpdateUser": EndpointSync.unary(
-                    method=MethodInfo(
-                        name="UpdateUser",
-                        service_name="chatto.admin.v1.AdminUserService",
-                        input=UpdateUserRequest,
-                        output=UpdateUserResponse,
-                        idempotency_level=IdempotencyLevel.UNKNOWN,
-                    ),
-                    function=service.update_user,
                 ),
                 "/chatto.admin.v1.AdminUserService/ChangeUserPassword": EndpointSync.unary(
                     method=MethodInfo(
@@ -737,30 +676,6 @@ class AdminUserServiceClientSync(ConnectClientSync):
                 service_name="chatto.admin.v1.AdminUserService",
                 input=RevokeRoleRequest,
                 output=RevokeRoleResponse,
-                idempotency_level=IdempotencyLevel.UNKNOWN,
-            ),
-            headers=headers,
-            timeout_ms=timeout_ms,
-        )
-    def update_user(
-        self,
-        request: UpdateUserRequest,
-        *,
-        headers: Headers | Mapping[str, str] | None = None, 
-        timeout_ms: int | None = None,
-    ) -> UpdateUserResponse:
-        """
-        Updates a human user's login and/or display name without applying the
-        username-change cooldown. Requires user.manage-accounts, including when
-        the caller targets their own account. Preserves the cooldown timestamp.
-        """
-        return self.execute_unary(
-            request=request,
-            method=MethodInfo(
-                name="UpdateUser",
-                service_name="chatto.admin.v1.AdminUserService",
-                input=UpdateUserRequest,
-                output=UpdateUserResponse,
                 idempotency_level=IdempotencyLevel.UNKNOWN,
             ),
             headers=headers,

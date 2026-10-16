@@ -107,7 +107,9 @@ class RoomWithViewerState(Message[_RoomWithViewerStateFields]):
             optional chatto.api.v1.RoomViewerState viewer_state = 14;
             ```
         member_user_ids:
-            Complete participant user IDs for a DM. Empty for channel rooms.
+            Complete participant user IDs for a DM, including participants whose
+            accounts were deleted. Clients show those as deleted users. Empty for
+            channel rooms.
 
             ```proto
             repeated string member_user_ids = 15;

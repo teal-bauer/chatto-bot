@@ -386,7 +386,7 @@ _RolePermissionMatrixFields: TypeAlias = Literal["role_name", "applicable_permis
 
 class RolePermissionMatrix(Message[_RolePermissionMatrixFields]):
     """
-    Permission matrix for one role within a scope page.
+    Complete permission matrix for one role at the matching scopes.
 
     ```proto
     message chatto.admin.v1.RolePermissionMatrix
@@ -438,7 +438,7 @@ class RolePermissionMatrix(Message[_RolePermissionMatrixFields]):
         scopes: list[PermissionMatrixScope]
         cells: list[PermissionMatrixCell]
 
-_GetRolePermissionMatrixRequestFields: TypeAlias = Literal["role_name", "include_direct_message_scope", "page", "scope"]
+_GetRolePermissionMatrixRequestFields: TypeAlias = Literal["role_name", "include_direct_message_scope", "scope"]
 
 class GetRolePermissionMatrixRequest(Message[_GetRolePermissionMatrixRequestFields]):
     """
@@ -462,14 +462,8 @@ class GetRolePermissionMatrixRequest(Message[_GetRolePermissionMatrixRequestFiel
             ```proto
             bool include_direct_message_scope = 2;
             ```
-        page:
-            Scope page. Default 20 scopes, maximum 100. Offsets count scopes, not decisions.
-
-            ```proto
-            optional chatto.api.v1.PageRequest page = 3;
-            ```
         scope:
-            Optional exact scope filter. Missing or inaccessible scopes produce an empty page.
+            Optional exact scope filter. Omit to read all scopes. Missing or inaccessible scopes produce an empty matrix.
             SERVER and DM require an empty ID; GROUP and ROOM require an ID.
 
             ```proto
@@ -477,7 +471,7 @@ class GetRolePermissionMatrixRequest(Message[_GetRolePermissionMatrixRequestFiel
             ```
     """
 
-    __slots__ = ("role_name", "include_direct_message_scope", "page", "scope")
+    __slots__ = ("role_name", "include_direct_message_scope", "scope")
 
     if TYPE_CHECKING:
 
@@ -486,17 +480,15 @@ class GetRolePermissionMatrixRequest(Message[_GetRolePermissionMatrixRequestFiel
             *,
             role_name: str = "",
             include_direct_message_scope: bool = False,
-            page: PageRequest | None = None,
             scope: PermissionScope | None = None,
         ) -> None:
             pass
 
         role_name: str
         include_direct_message_scope: bool
-        page: PageRequest | None
         scope: PermissionScope | None
 
-_GetRolePermissionMatrixResponseFields: TypeAlias = Literal["matrix", "page"]
+_GetRolePermissionMatrixResponseFields: TypeAlias = Literal["matrix"]
 
 class GetRolePermissionMatrixResponse(Message[_GetRolePermissionMatrixResponseFields]):
     """
@@ -513,15 +505,9 @@ class GetRolePermissionMatrixResponse(Message[_GetRolePermissionMatrixResponseFi
             ```proto
             optional chatto.admin.v1.RolePermissionMatrix matrix = 1;
             ```
-        page:
-            Total matching scopes and whether another scope page exists.
-
-            ```proto
-            optional chatto.api.v1.PageInfo page = 2;
-            ```
     """
 
-    __slots__ = ("matrix", "page")
+    __slots__ = ("matrix",)
 
     if TYPE_CHECKING:
 
@@ -529,18 +515,16 @@ class GetRolePermissionMatrixResponse(Message[_GetRolePermissionMatrixResponseFi
             self,
             *,
             matrix: RolePermissionMatrix | None = None,
-            page: PageInfo | None = None,
         ) -> None:
             pass
 
         matrix: RolePermissionMatrix | None
-        page: PageInfo | None
 
 _UserPermissionMatrixFields: TypeAlias = Literal["user_id", "applicable_permissions", "scopes", "cells"]
 
 class UserPermissionMatrix(Message[_UserPermissionMatrixFields]):
     """
-    Permission matrix for one user within a scope page.
+    Complete permission matrix for one user at the matching scopes.
 
     ```proto
     message chatto.admin.v1.UserPermissionMatrix
@@ -1136,7 +1120,7 @@ class ExplainPermissionsResponse(Message[_ExplainPermissionsResponseFields]):
 
         explanations: list[PermissionExplanation]
 
-_GetUserPermissionMatrixRequestFields: TypeAlias = Literal["user_id", "include_direct_message_scope", "page", "scope"]
+_GetUserPermissionMatrixRequestFields: TypeAlias = Literal["user_id", "include_direct_message_scope", "scope"]
 
 class GetUserPermissionMatrixRequest(Message[_GetUserPermissionMatrixRequestFields]):
     """
@@ -1160,14 +1144,8 @@ class GetUserPermissionMatrixRequest(Message[_GetUserPermissionMatrixRequestFiel
             ```proto
             bool include_direct_message_scope = 2;
             ```
-        page:
-            Scope page. Default 20 scopes, maximum 100. Offsets count scopes, not decisions.
-
-            ```proto
-            optional chatto.api.v1.PageRequest page = 3;
-            ```
         scope:
-            Optional exact scope filter. Missing or inaccessible scopes produce an empty page.
+            Optional exact scope filter. Omit to read all scopes. Missing or inaccessible scopes produce an empty matrix.
             SERVER and DM require an empty ID; GROUP and ROOM require an ID.
 
             ```proto
@@ -1175,7 +1153,7 @@ class GetUserPermissionMatrixRequest(Message[_GetUserPermissionMatrixRequestFiel
             ```
     """
 
-    __slots__ = ("user_id", "include_direct_message_scope", "page", "scope")
+    __slots__ = ("user_id", "include_direct_message_scope", "scope")
 
     if TYPE_CHECKING:
 
@@ -1184,17 +1162,15 @@ class GetUserPermissionMatrixRequest(Message[_GetUserPermissionMatrixRequestFiel
             *,
             user_id: str = "",
             include_direct_message_scope: bool = False,
-            page: PageRequest | None = None,
             scope: PermissionScope | None = None,
         ) -> None:
             pass
 
         user_id: str
         include_direct_message_scope: bool
-        page: PageRequest | None
         scope: PermissionScope | None
 
-_GetUserPermissionMatrixResponseFields: TypeAlias = Literal["matrix", "page"]
+_GetUserPermissionMatrixResponseFields: TypeAlias = Literal["matrix"]
 
 class GetUserPermissionMatrixResponse(Message[_GetUserPermissionMatrixResponseFields]):
     """
@@ -1211,15 +1187,9 @@ class GetUserPermissionMatrixResponse(Message[_GetUserPermissionMatrixResponseFi
             ```proto
             optional chatto.admin.v1.UserPermissionMatrix matrix = 1;
             ```
-        page:
-            Total matching scopes and whether another scope page exists.
-
-            ```proto
-            optional chatto.api.v1.PageInfo page = 2;
-            ```
     """
 
-    __slots__ = ("matrix", "page")
+    __slots__ = ("matrix",)
 
     if TYPE_CHECKING:
 
@@ -1227,12 +1197,10 @@ class GetUserPermissionMatrixResponse(Message[_GetUserPermissionMatrixResponseFi
             self,
             *,
             matrix: UserPermissionMatrix | None = None,
-            page: PageInfo | None = None,
         ) -> None:
             pass
 
         matrix: UserPermissionMatrix | None
-        page: PageInfo | None
 
 _SetRolePermissionRequestFields: TypeAlias = Literal["role_name", "permission", "decision", "scope"]
 
@@ -1546,7 +1514,7 @@ class PermissionDecisionLevel(Enum):
 
 
 _DESC = file_desc(
-    b'\n!chatto/admin/v1/permissions.proto\x12\x0fchatto.admin.v1\x1a\x1bbuf/validate/validate.proto\x1a\x19chatto/api/v1/roles.proto\x1a\x1echatto/api/v1/pagination.proto"e\n\x0fPermissionScope\x12B\n\x04kind\x18\x01 \x01(\x0e2$.chatto.admin.v1.PermissionScopeKindR\x04kindB\x08\xbaH\x05\x82\x01\x02\x10\x01\x12\x0e\n\x02id\x18\x02 \x01(\tR\x02id"b\n\x0fTierPermissions\x12 \n\x0bpermissions\x18\x01 \x03(\tR\x0bpermissions\x12-\n\x12permission_denials\x18\x02 \x03(\tR\x11permissionDenials"\x8a\x02\n\x08TierRole\x12<\n\x08override\x18\x06 \x01(\x0b2 .chatto.admin.v1.TierPermissionsR\x08override\x12)\n\x10inherited_allows\x18\x07 \x03(\tR\x0finheritedAllows\x12+\n\x11inherited_denials\x18\x08 \x03(\tR\x10inheritedDenials\x12\'\n\x04role\x18\t \x01(\x0b2\x13.chatto.api.v1.RoleR\x04roleJ\x04\x08\x01\x10\x06R\trole_nameR\x0cdisplay_nameR\x0bdescriptionR\tis_systemR\x08position"s\n\tTierRoles\x125\n\x16applicable_permissions\x18\x01 \x03(\tR\x15applicablePermissions\x12/\n\x05roles\x18\x02 \x03(\x0b2\x19.chatto.admin.v1.TierRoleR\x05roles"\\\n"GetRolePermissionTierMatrixRequest\x126\n\x05scope\x18\x01 \x01(\x0b2 .chatto.admin.v1.PermissionScopeR\x05scope"Y\n#GetRolePermissionTierMatrixResponse\x122\n\x06matrix\x18\x01 \x01(\x0b2\x1a.chatto.admin.v1.TierRolesR\x06matrix"\x9f\x01\n\x15PermissionMatrixScope\x12\x0e\n\x02id\x18\x01 \x01(\tR\x02id\x12\x14\n\x05label\x18\x02 \x01(\tR\x05label\x128\n\x04kind\x18\x03 \x01(\x0e2$.chatto.admin.v1.PermissionScopeKindR\x04kind\x12&\n\x0fparent_group_id\x18\x04 \x01(\tR\rparentGroupId"\x97\x02\n\x14PermissionMatrixCell\x12\x1e\n\npermission\x18\x01 \x01(\tR\npermission\x12\x19\n\x08scope_id\x18\x02 \x01(\tR\x07scopeId\x12?\n\x08override\x18\x03 \x01(\x0e2#.chatto.admin.v1.PermissionDecisionR\x08override\x12A\n\teffective\x18\x04 \x01(\x0e2#.chatto.admin.v1.PermissionDecisionR\teffective\x12,\n\x0fallow_permitted\x18\x05 \x01(\x08H\x00R\x0eallowPermitted\x88\x01\x01B\x12\n\x10_allow_permitted"\xe7\x01\n\x14RolePermissionMatrix\x12\x1b\n\trole_name\x18\x01 \x01(\tR\x08roleName\x125\n\x16applicable_permissions\x18\x02 \x03(\tR\x15applicablePermissions\x12>\n\x06scopes\x18\x03 \x03(\x0b2&.chatto.admin.v1.PermissionMatrixScopeR\x06scopes\x12;\n\x05cells\x18\x04 \x03(\x0b2%.chatto.admin.v1.PermissionMatrixCellR\x05cells"\xef\x01\n\x1eGetRolePermissionMatrixRequest\x12$\n\trole_name\x18\x01 \x01(\tR\x08roleNameB\x07\xbaH\x04r\x02\x10\x01\x12?\n\x1cinclude_direct_message_scope\x18\x02 \x01(\x08R\x19includeDirectMessageScope\x12.\n\x04page\x18\x03 \x01(\x0b2\x1a.chatto.api.v1.PageRequestR\x04page\x126\n\x05scope\x18\x04 \x01(\x0b2 .chatto.admin.v1.PermissionScopeR\x05scope"\x8d\x01\n\x1fGetRolePermissionMatrixResponse\x12=\n\x06matrix\x18\x01 \x01(\x0b2%.chatto.admin.v1.RolePermissionMatrixR\x06matrix\x12+\n\x04page\x18\x02 \x01(\x0b2\x17.chatto.api.v1.PageInfoR\x04page"\xe3\x01\n\x14UserPermissionMatrix\x12\x17\n\x07user_id\x18\x01 \x01(\tR\x06userId\x125\n\x16applicable_permissions\x18\x02 \x03(\tR\x15applicablePermissions\x12>\n\x06scopes\x18\x03 \x03(\x0b2&.chatto.admin.v1.PermissionMatrixScopeR\x06scopes\x12;\n\x05cells\x18\x04 \x03(\x0b2%.chatto.admin.v1.PermissionMatrixCellR\x05cells"\xf6\x01\n\x18ScopedPermissionDecision\x12\x1e\n\npermission\x18\x01 \x01(\tR\npermission\x126\n\x05scope\x18\x02 \x01(\x0b2 .chatto.admin.v1.PermissionScopeR\x05scope\x12?\n\x08override\x18\x03 \x01(\x0e2#.chatto.admin.v1.PermissionDecisionR\x08override\x12A\n\teffective\x18\x04 \x01(\x0e2#.chatto.admin.v1.PermissionDecisionR\teffective"\xb3\x01\n\x18PermissionDecisionUpdate\x12\x1e\n\npermission\x18\x01 \x01(\tR\npermission\x126\n\x05scope\x18\x02 \x01(\x0b2 .chatto.admin.v1.PermissionScopeR\x05scope\x12?\n\x08decision\x18\x03 \x01(\x0e2#.chatto.admin.v1.PermissionDecisionR\x08decision"\xf3\x01\n"ListRolePermissionDecisionsRequest\x12$\n\trole_name\x18\x01 \x01(\tR\x08roleNameB\x07\xbaH\x04r\x02\x10\x01\x12?\n\x1cinclude_direct_message_scope\x18\x02 \x01(\x08R\x19includeDirectMessageScope\x12.\n\x04page\x18\x03 \x01(\x0b2\x1a.chatto.api.v1.PageRequestR\x04page\x126\n\x05scope\x18\x04 \x01(\x0b2 .chatto.admin.v1.PermissionScopeR\x05scope"\xf2\x01\n#ListRolePermissionDecisionsResponse\x12\x1b\n\trole_name\x18\x01 \x01(\tR\x08roleName\x12G\n\tdecisions\x18\x02 \x03(\x0b2).chatto.admin.v1.ScopedPermissionDecisionR\tdecisions\x12+\n\x04page\x18\x03 \x01(\x0b2\x17.chatto.api.v1.PageInfoR\x04page\x128\n\x06scopes\x18\x04 \x03(\x0b2 .chatto.admin.v1.PermissionScopeR\x06scopes"\xef\x01\n"ListUserPermissionDecisionsRequest\x12 \n\x07user_id\x18\x01 \x01(\tR\x06userIdB\x07\xbaH\x04r\x02\x10\x01\x12?\n\x1cinclude_direct_message_scope\x18\x02 \x01(\x08R\x19includeDirectMessageScope\x12.\n\x04page\x18\x03 \x01(\x0b2\x1a.chatto.api.v1.PageRequestR\x04page\x126\n\x05scope\x18\x04 \x01(\x0b2 .chatto.admin.v1.PermissionScopeR\x05scope"\xee\x01\n#ListUserPermissionDecisionsResponse\x12\x17\n\x07user_id\x18\x01 \x01(\tR\x06userId\x12G\n\tdecisions\x18\x02 \x03(\x0b2).chatto.admin.v1.ScopedPermissionDecisionR\tdecisions\x12+\n\x04page\x18\x03 \x01(\x0b2\x17.chatto.api.v1.PageInfoR\x04page\x128\n\x06scopes\x18\x04 \x03(\x0b2 .chatto.admin.v1.PermissionScopeR\x06scopes"\xce\x01\n\x14PermissionTraceEntry\x12>\n\x05level\x18\x01 \x01(\x0e2(.chatto.admin.v1.PermissionDecisionLevelR\x05level\x12\x1b\n\trole_name\x18\x02 \x01(\tR\x08roleName\x12?\n\x08decision\x18\x03 \x01(\x0e2#.chatto.admin.v1.PermissionDecisionR\x08decision\x12\x18\n\x07applied\x18\x04 \x01(\x08R\x07applied"\xd6\x02\n\x15PermissionExplanation\x12\x1e\n\npermission\x18\x01 \x01(\tR\npermission\x129\n\x05state\x18\x02 \x01(\x0e2#.chatto.admin.v1.PermissionDecisionR\x05state\x12G\n\ndecided_at\x18\x03 \x01(\x0e2(.chatto.admin.v1.PermissionDecisionLevelR\tdecidedAt\x12&\n\x0fdecided_by_role\x18\x04 \x01(\tR\rdecidedByRole\x12;\n\x05trace\x18\x05 \x03(\x0b2%.chatto.admin.v1.PermissionTraceEntryR\x05trace\x124\n\x16included_by_permission\x18\x06 \x01(\tR\x14includedByPermission"\x8e\x01\n\x19ExplainPermissionsRequest\x12 \n\x07user_id\x18\x01 \x01(\tR\x06userIdB\x07\xbaH\x04r\x02\x10\x01\x12\x17\n\x07room_id\x18\x02 \x01(\tR\x06roomId\x126\n\x05scope\x18\x03 \x01(\x0b2 .chatto.admin.v1.PermissionScopeR\x05scope"h\n\x1aExplainPermissionsResponse\x12J\n\x0cexplanations\x18\x01 \x03(\x0b2&.chatto.admin.v1.PermissionExplanationR\x0cexplanations"\xeb\x01\n\x1eGetUserPermissionMatrixRequest\x12 \n\x07user_id\x18\x01 \x01(\tR\x06userIdB\x07\xbaH\x04r\x02\x10\x01\x12?\n\x1cinclude_direct_message_scope\x18\x02 \x01(\x08R\x19includeDirectMessageScope\x12.\n\x04page\x18\x03 \x01(\x0b2\x1a.chatto.api.v1.PageRequestR\x04page\x126\n\x05scope\x18\x04 \x01(\x0b2 .chatto.admin.v1.PermissionScopeR\x05scope"\x8d\x01\n\x1fGetUserPermissionMatrixResponse\x12=\n\x06matrix\x18\x01 \x01(\x0b2%.chatto.admin.v1.UserPermissionMatrixR\x06matrix\x12+\n\x04page\x18\x02 \x01(\x0b2\x17.chatto.api.v1.PageInfoR\x04page"\xee\x01\n\x18SetRolePermissionRequest\x12$\n\trole_name\x18\x01 \x01(\tR\x08roleNameB\x07\xbaH\x04r\x02\x10\x01\x12\'\n\npermission\x18\x02 \x01(\tR\npermissionB\x07\xbaH\x04r\x02\x10\x01\x12K\n\x08decision\x18\x03 \x01(\x0e2#.chatto.admin.v1.PermissionDecisionR\x08decisionB\n\xbaH\x07\x82\x01\x04\x10\x01 \x00\x126\n\x05scope\x18\x04 \x01(\x0b2 .chatto.admin.v1.PermissionScopeR\x05scope"b\n\x19SetRolePermissionResponse\x12E\n\x08decision\x18\x01 \x01(\x0b2).chatto.admin.v1.PermissionDecisionUpdateR\x08decision"\xea\x01\n\x18SetUserPermissionRequest\x12 \n\x07user_id\x18\x01 \x01(\tR\x06userIdB\x07\xbaH\x04r\x02\x10\x01\x12\'\n\npermission\x18\x02 \x01(\tR\npermissionB\x07\xbaH\x04r\x02\x10\x01\x12K\n\x08decision\x18\x03 \x01(\x0e2#.chatto.admin.v1.PermissionDecisionR\x08decisionB\n\xbaH\x07\x82\x01\x04\x10\x01 \x00\x126\n\x05scope\x18\x04 \x01(\x0b2 .chatto.admin.v1.PermissionScopeR\x05scope"b\n\x19SetUserPermissionResponse\x12E\n\x08decision\x18\x01 \x01(\x0b2).chatto.admin.v1.PermissionDecisionUpdateR\x08decision*\x94\x01\n\x12PermissionDecision\x12#\n\x1fPERMISSION_DECISION_UNSPECIFIED\x10\x00\x12\x1d\n\x19PERMISSION_DECISION_ALLOW\x10\x01\x12\x1c\n\x18PERMISSION_DECISION_DENY\x10\x02\x12\x1c\n\x18PERMISSION_DECISION_NONE\x10\x03*\xbd\x01\n\x13PermissionScopeKind\x12%\n!PERMISSION_SCOPE_KIND_UNSPECIFIED\x10\x00\x12 \n\x1cPERMISSION_SCOPE_KIND_SERVER\x10\x01\x12\x1f\n\x1bPERMISSION_SCOPE_KIND_GROUP\x10\x02\x12\x1e\n\x1aPERMISSION_SCOPE_KIND_ROOM\x10\x03\x12\x1c\n\x18PERMISSION_SCOPE_KIND_DM\x10\x04*\xd5\x01\n\x17PermissionDecisionLevel\x12)\n%PERMISSION_DECISION_LEVEL_UNSPECIFIED\x10\x00\x12$\n PERMISSION_DECISION_LEVEL_SERVER\x10\x01\x12#\n\x1fPERMISSION_DECISION_LEVEL_GROUP\x10\x02\x12"\n\x1ePERMISSION_DECISION_LEVEL_ROOM\x10\x03\x12 \n\x1cPERMISSION_DECISION_LEVEL_DM\x10\x042\xfc\x07\n\x16AdminPermissionService\x12\x88\x01\n\x1bGetRolePermissionTierMatrix\x123.chatto.admin.v1.GetRolePermissionTierMatrixRequest\x1a4.chatto.admin.v1.GetRolePermissionTierMatrixResponse\x12|\n\x17GetRolePermissionMatrix\x12/.chatto.admin.v1.GetRolePermissionMatrixRequest\x1a0.chatto.admin.v1.GetRolePermissionMatrixResponse\x12\x88\x01\n\x1bListRolePermissionDecisions\x123.chatto.admin.v1.ListRolePermissionDecisionsRequest\x1a4.chatto.admin.v1.ListRolePermissionDecisionsResponse\x12|\n\x17GetUserPermissionMatrix\x12/.chatto.admin.v1.GetUserPermissionMatrixRequest\x1a0.chatto.admin.v1.GetUserPermissionMatrixResponse\x12\x88\x01\n\x1bListUserPermissionDecisions\x123.chatto.admin.v1.ListUserPermissionDecisionsRequest\x1a4.chatto.admin.v1.ListUserPermissionDecisionsResponse\x12m\n\x12ExplainPermissions\x12*.chatto.admin.v1.ExplainPermissionsRequest\x1a+.chatto.admin.v1.ExplainPermissionsResponse\x12j\n\x11SetRolePermission\x12).chatto.admin.v1.SetRolePermissionRequest\x1a*.chatto.admin.v1.SetRolePermissionResponse\x12j\n\x11SetUserPermission\x12).chatto.admin.v1.SetUserPermissionRequest\x1a*.chatto.admin.v1.SetUserPermissionResponseB\x85\x01\n\x13com.chatto.admin.v1B\x10PermissionsProtoP\x01\xa2\x02\x03CAX\xaa\x02\x0fChatto.Admin.V1\xca\x02\x0fChatto\\Admin\\V1\xe2\x02\x1bChatto\\Admin\\V1\\GPBMetadata\xea\x02\x11Chatto::Admin::V1b\x06proto3',
+    b'\n!chatto/admin/v1/permissions.proto\x12\x0fchatto.admin.v1\x1a\x1bbuf/validate/validate.proto\x1a\x19chatto/api/v1/roles.proto\x1a\x1echatto/api/v1/pagination.proto"e\n\x0fPermissionScope\x12B\n\x04kind\x18\x01 \x01(\x0e2$.chatto.admin.v1.PermissionScopeKindR\x04kindB\x08\xbaH\x05\x82\x01\x02\x10\x01\x12\x0e\n\x02id\x18\x02 \x01(\tR\x02id"b\n\x0fTierPermissions\x12 \n\x0bpermissions\x18\x01 \x03(\tR\x0bpermissions\x12-\n\x12permission_denials\x18\x02 \x03(\tR\x11permissionDenials"\x8a\x02\n\x08TierRole\x12<\n\x08override\x18\x06 \x01(\x0b2 .chatto.admin.v1.TierPermissionsR\x08override\x12)\n\x10inherited_allows\x18\x07 \x03(\tR\x0finheritedAllows\x12+\n\x11inherited_denials\x18\x08 \x03(\tR\x10inheritedDenials\x12\'\n\x04role\x18\t \x01(\x0b2\x13.chatto.api.v1.RoleR\x04roleJ\x04\x08\x01\x10\x06R\trole_nameR\x0cdisplay_nameR\x0bdescriptionR\tis_systemR\x08position"s\n\tTierRoles\x125\n\x16applicable_permissions\x18\x01 \x03(\tR\x15applicablePermissions\x12/\n\x05roles\x18\x02 \x03(\x0b2\x19.chatto.admin.v1.TierRoleR\x05roles"\\\n"GetRolePermissionTierMatrixRequest\x126\n\x05scope\x18\x01 \x01(\x0b2 .chatto.admin.v1.PermissionScopeR\x05scope"Y\n#GetRolePermissionTierMatrixResponse\x122\n\x06matrix\x18\x01 \x01(\x0b2\x1a.chatto.admin.v1.TierRolesR\x06matrix"\x9f\x01\n\x15PermissionMatrixScope\x12\x0e\n\x02id\x18\x01 \x01(\tR\x02id\x12\x14\n\x05label\x18\x02 \x01(\tR\x05label\x128\n\x04kind\x18\x03 \x01(\x0e2$.chatto.admin.v1.PermissionScopeKindR\x04kind\x12&\n\x0fparent_group_id\x18\x04 \x01(\tR\rparentGroupId"\x97\x02\n\x14PermissionMatrixCell\x12\x1e\n\npermission\x18\x01 \x01(\tR\npermission\x12\x19\n\x08scope_id\x18\x02 \x01(\tR\x07scopeId\x12?\n\x08override\x18\x03 \x01(\x0e2#.chatto.admin.v1.PermissionDecisionR\x08override\x12A\n\teffective\x18\x04 \x01(\x0e2#.chatto.admin.v1.PermissionDecisionR\teffective\x12,\n\x0fallow_permitted\x18\x05 \x01(\x08H\x00R\x0eallowPermitted\x88\x01\x01B\x12\n\x10_allow_permitted"\xe7\x01\n\x14RolePermissionMatrix\x12\x1b\n\trole_name\x18\x01 \x01(\tR\x08roleName\x125\n\x16applicable_permissions\x18\x02 \x03(\tR\x15applicablePermissions\x12>\n\x06scopes\x18\x03 \x03(\x0b2&.chatto.admin.v1.PermissionMatrixScopeR\x06scopes\x12;\n\x05cells\x18\x04 \x03(\x0b2%.chatto.admin.v1.PermissionMatrixCellR\x05cells"\xcb\x01\n\x1eGetRolePermissionMatrixRequest\x12$\n\trole_name\x18\x01 \x01(\tR\x08roleNameB\x07\xbaH\x04r\x02\x10\x01\x12?\n\x1cinclude_direct_message_scope\x18\x02 \x01(\x08R\x19includeDirectMessageScope\x126\n\x05scope\x18\x04 \x01(\x0b2 .chatto.admin.v1.PermissionScopeR\x05scopeJ\x04\x08\x03\x10\x04R\x04page"l\n\x1fGetRolePermissionMatrixResponse\x12=\n\x06matrix\x18\x01 \x01(\x0b2%.chatto.admin.v1.RolePermissionMatrixR\x06matrixJ\x04\x08\x02\x10\x03R\x04page"\xe3\x01\n\x14UserPermissionMatrix\x12\x17\n\x07user_id\x18\x01 \x01(\tR\x06userId\x125\n\x16applicable_permissions\x18\x02 \x03(\tR\x15applicablePermissions\x12>\n\x06scopes\x18\x03 \x03(\x0b2&.chatto.admin.v1.PermissionMatrixScopeR\x06scopes\x12;\n\x05cells\x18\x04 \x03(\x0b2%.chatto.admin.v1.PermissionMatrixCellR\x05cells"\xf6\x01\n\x18ScopedPermissionDecision\x12\x1e\n\npermission\x18\x01 \x01(\tR\npermission\x126\n\x05scope\x18\x02 \x01(\x0b2 .chatto.admin.v1.PermissionScopeR\x05scope\x12?\n\x08override\x18\x03 \x01(\x0e2#.chatto.admin.v1.PermissionDecisionR\x08override\x12A\n\teffective\x18\x04 \x01(\x0e2#.chatto.admin.v1.PermissionDecisionR\teffective"\xb3\x01\n\x18PermissionDecisionUpdate\x12\x1e\n\npermission\x18\x01 \x01(\tR\npermission\x126\n\x05scope\x18\x02 \x01(\x0b2 .chatto.admin.v1.PermissionScopeR\x05scope\x12?\n\x08decision\x18\x03 \x01(\x0e2#.chatto.admin.v1.PermissionDecisionR\x08decision"\xf3\x01\n"ListRolePermissionDecisionsRequest\x12$\n\trole_name\x18\x01 \x01(\tR\x08roleNameB\x07\xbaH\x04r\x02\x10\x01\x12?\n\x1cinclude_direct_message_scope\x18\x02 \x01(\x08R\x19includeDirectMessageScope\x12.\n\x04page\x18\x03 \x01(\x0b2\x1a.chatto.api.v1.PageRequestR\x04page\x126\n\x05scope\x18\x04 \x01(\x0b2 .chatto.admin.v1.PermissionScopeR\x05scope"\xf2\x01\n#ListRolePermissionDecisionsResponse\x12\x1b\n\trole_name\x18\x01 \x01(\tR\x08roleName\x12G\n\tdecisions\x18\x02 \x03(\x0b2).chatto.admin.v1.ScopedPermissionDecisionR\tdecisions\x12+\n\x04page\x18\x03 \x01(\x0b2\x17.chatto.api.v1.PageInfoR\x04page\x128\n\x06scopes\x18\x04 \x03(\x0b2 .chatto.admin.v1.PermissionScopeR\x06scopes"\xef\x01\n"ListUserPermissionDecisionsRequest\x12 \n\x07user_id\x18\x01 \x01(\tR\x06userIdB\x07\xbaH\x04r\x02\x10\x01\x12?\n\x1cinclude_direct_message_scope\x18\x02 \x01(\x08R\x19includeDirectMessageScope\x12.\n\x04page\x18\x03 \x01(\x0b2\x1a.chatto.api.v1.PageRequestR\x04page\x126\n\x05scope\x18\x04 \x01(\x0b2 .chatto.admin.v1.PermissionScopeR\x05scope"\xee\x01\n#ListUserPermissionDecisionsResponse\x12\x17\n\x07user_id\x18\x01 \x01(\tR\x06userId\x12G\n\tdecisions\x18\x02 \x03(\x0b2).chatto.admin.v1.ScopedPermissionDecisionR\tdecisions\x12+\n\x04page\x18\x03 \x01(\x0b2\x17.chatto.api.v1.PageInfoR\x04page\x128\n\x06scopes\x18\x04 \x03(\x0b2 .chatto.admin.v1.PermissionScopeR\x06scopes"\xce\x01\n\x14PermissionTraceEntry\x12>\n\x05level\x18\x01 \x01(\x0e2(.chatto.admin.v1.PermissionDecisionLevelR\x05level\x12\x1b\n\trole_name\x18\x02 \x01(\tR\x08roleName\x12?\n\x08decision\x18\x03 \x01(\x0e2#.chatto.admin.v1.PermissionDecisionR\x08decision\x12\x18\n\x07applied\x18\x04 \x01(\x08R\x07applied"\xd6\x02\n\x15PermissionExplanation\x12\x1e\n\npermission\x18\x01 \x01(\tR\npermission\x129\n\x05state\x18\x02 \x01(\x0e2#.chatto.admin.v1.PermissionDecisionR\x05state\x12G\n\ndecided_at\x18\x03 \x01(\x0e2(.chatto.admin.v1.PermissionDecisionLevelR\tdecidedAt\x12&\n\x0fdecided_by_role\x18\x04 \x01(\tR\rdecidedByRole\x12;\n\x05trace\x18\x05 \x03(\x0b2%.chatto.admin.v1.PermissionTraceEntryR\x05trace\x124\n\x16included_by_permission\x18\x06 \x01(\tR\x14includedByPermission"\x8e\x01\n\x19ExplainPermissionsRequest\x12 \n\x07user_id\x18\x01 \x01(\tR\x06userIdB\x07\xbaH\x04r\x02\x10\x01\x12\x17\n\x07room_id\x18\x02 \x01(\tR\x06roomId\x126\n\x05scope\x18\x03 \x01(\x0b2 .chatto.admin.v1.PermissionScopeR\x05scope"h\n\x1aExplainPermissionsResponse\x12J\n\x0cexplanations\x18\x01 \x03(\x0b2&.chatto.admin.v1.PermissionExplanationR\x0cexplanations"\xc7\x01\n\x1eGetUserPermissionMatrixRequest\x12 \n\x07user_id\x18\x01 \x01(\tR\x06userIdB\x07\xbaH\x04r\x02\x10\x01\x12?\n\x1cinclude_direct_message_scope\x18\x02 \x01(\x08R\x19includeDirectMessageScope\x126\n\x05scope\x18\x04 \x01(\x0b2 .chatto.admin.v1.PermissionScopeR\x05scopeJ\x04\x08\x03\x10\x04R\x04page"l\n\x1fGetUserPermissionMatrixResponse\x12=\n\x06matrix\x18\x01 \x01(\x0b2%.chatto.admin.v1.UserPermissionMatrixR\x06matrixJ\x04\x08\x02\x10\x03R\x04page"\xee\x01\n\x18SetRolePermissionRequest\x12$\n\trole_name\x18\x01 \x01(\tR\x08roleNameB\x07\xbaH\x04r\x02\x10\x01\x12\'\n\npermission\x18\x02 \x01(\tR\npermissionB\x07\xbaH\x04r\x02\x10\x01\x12K\n\x08decision\x18\x03 \x01(\x0e2#.chatto.admin.v1.PermissionDecisionR\x08decisionB\n\xbaH\x07\x82\x01\x04\x10\x01 \x00\x126\n\x05scope\x18\x04 \x01(\x0b2 .chatto.admin.v1.PermissionScopeR\x05scope"b\n\x19SetRolePermissionResponse\x12E\n\x08decision\x18\x01 \x01(\x0b2).chatto.admin.v1.PermissionDecisionUpdateR\x08decision"\xea\x01\n\x18SetUserPermissionRequest\x12 \n\x07user_id\x18\x01 \x01(\tR\x06userIdB\x07\xbaH\x04r\x02\x10\x01\x12\'\n\npermission\x18\x02 \x01(\tR\npermissionB\x07\xbaH\x04r\x02\x10\x01\x12K\n\x08decision\x18\x03 \x01(\x0e2#.chatto.admin.v1.PermissionDecisionR\x08decisionB\n\xbaH\x07\x82\x01\x04\x10\x01 \x00\x126\n\x05scope\x18\x04 \x01(\x0b2 .chatto.admin.v1.PermissionScopeR\x05scope"b\n\x19SetUserPermissionResponse\x12E\n\x08decision\x18\x01 \x01(\x0b2).chatto.admin.v1.PermissionDecisionUpdateR\x08decision*\x94\x01\n\x12PermissionDecision\x12#\n\x1fPERMISSION_DECISION_UNSPECIFIED\x10\x00\x12\x1d\n\x19PERMISSION_DECISION_ALLOW\x10\x01\x12\x1c\n\x18PERMISSION_DECISION_DENY\x10\x02\x12\x1c\n\x18PERMISSION_DECISION_NONE\x10\x03*\xbd\x01\n\x13PermissionScopeKind\x12%\n!PERMISSION_SCOPE_KIND_UNSPECIFIED\x10\x00\x12 \n\x1cPERMISSION_SCOPE_KIND_SERVER\x10\x01\x12\x1f\n\x1bPERMISSION_SCOPE_KIND_GROUP\x10\x02\x12\x1e\n\x1aPERMISSION_SCOPE_KIND_ROOM\x10\x03\x12\x1c\n\x18PERMISSION_SCOPE_KIND_DM\x10\x04*\xd5\x01\n\x17PermissionDecisionLevel\x12)\n%PERMISSION_DECISION_LEVEL_UNSPECIFIED\x10\x00\x12$\n PERMISSION_DECISION_LEVEL_SERVER\x10\x01\x12#\n\x1fPERMISSION_DECISION_LEVEL_GROUP\x10\x02\x12"\n\x1ePERMISSION_DECISION_LEVEL_ROOM\x10\x03\x12 \n\x1cPERMISSION_DECISION_LEVEL_DM\x10\x042\xfc\x07\n\x16AdminPermissionService\x12\x88\x01\n\x1bGetRolePermissionTierMatrix\x123.chatto.admin.v1.GetRolePermissionTierMatrixRequest\x1a4.chatto.admin.v1.GetRolePermissionTierMatrixResponse\x12|\n\x17GetRolePermissionMatrix\x12/.chatto.admin.v1.GetRolePermissionMatrixRequest\x1a0.chatto.admin.v1.GetRolePermissionMatrixResponse\x12\x88\x01\n\x1bListRolePermissionDecisions\x123.chatto.admin.v1.ListRolePermissionDecisionsRequest\x1a4.chatto.admin.v1.ListRolePermissionDecisionsResponse\x12|\n\x17GetUserPermissionMatrix\x12/.chatto.admin.v1.GetUserPermissionMatrixRequest\x1a0.chatto.admin.v1.GetUserPermissionMatrixResponse\x12\x88\x01\n\x1bListUserPermissionDecisions\x123.chatto.admin.v1.ListUserPermissionDecisionsRequest\x1a4.chatto.admin.v1.ListUserPermissionDecisionsResponse\x12m\n\x12ExplainPermissions\x12*.chatto.admin.v1.ExplainPermissionsRequest\x1a+.chatto.admin.v1.ExplainPermissionsResponse\x12j\n\x11SetRolePermission\x12).chatto.admin.v1.SetRolePermissionRequest\x1a*.chatto.admin.v1.SetRolePermissionResponse\x12j\n\x11SetUserPermission\x12).chatto.admin.v1.SetUserPermissionRequest\x1a*.chatto.admin.v1.SetUserPermissionResponseB\x85\x01\n\x13com.chatto.admin.v1B\x10PermissionsProtoP\x01\xa2\x02\x03CAX\xaa\x02\x0fChatto.Admin.V1\xca\x02\x0fChatto\\Admin\\V1\xe2\x02\x1bChatto\\Admin\\V1\\GPBMetadata\xea\x02\x11Chatto::Admin::V1b\x06proto3',
     [
         validate_pb.desc(),
         roles_pb.desc(),
