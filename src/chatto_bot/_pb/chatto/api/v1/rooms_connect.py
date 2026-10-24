@@ -102,6 +102,9 @@ class RoomService(Protocol):
         participant set, or fetches its existing DM. message.post is required
         only when the DM must be created. A valid request from a bot receives
         PERMISSION_DENIED and cannot use this RPC to fetch an existing DM.
+        New DMs support the caller and at most one other user. New group DMs
+        receive INVALID_ARGUMENT; use a channel room instead. Existing group
+        DMs can still be fetched.
         """
         raise ConnectError(Code.UNIMPLEMENTED, 'Not implemented')
 
@@ -757,6 +760,9 @@ class RoomServiceClient(ConnectClient):
         participant set, or fetches its existing DM. message.post is required
         only when the DM must be created. A valid request from a bot receives
         PERMISSION_DENIED and cannot use this RPC to fetch an existing DM.
+        New DMs support the caller and at most one other user. New group DMs
+        receive INVALID_ARGUMENT; use a channel room instead. Existing group
+        DMs can still be fetched.
         """
         return await self.execute_unary(
             request=request,
@@ -1279,6 +1285,9 @@ class RoomServiceSync(Protocol):
         participant set, or fetches its existing DM. message.post is required
         only when the DM must be created. A valid request from a bot receives
         PERMISSION_DENIED and cannot use this RPC to fetch an existing DM.
+        New DMs support the caller and at most one other user. New group DMs
+        receive INVALID_ARGUMENT; use a channel room instead. Existing group
+        DMs can still be fetched.
         """
         raise ConnectError(Code.UNIMPLEMENTED, 'Not implemented')
 
@@ -1924,6 +1933,9 @@ class RoomServiceClientSync(ConnectClientSync):
         participant set, or fetches its existing DM. message.post is required
         only when the DM must be created. A valid request from a bot receives
         PERMISSION_DENIED and cannot use this RPC to fetch an existing DM.
+        New DMs support the caller and at most one other user. New group DMs
+        receive INVALID_ARGUMENT; use a channel room instead. Existing group
+        DMs can still be fetched.
         """
         return self.execute_unary(
             request=request,

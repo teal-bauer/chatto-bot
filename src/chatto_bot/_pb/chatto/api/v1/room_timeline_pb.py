@@ -20,7 +20,7 @@ if TYPE_CHECKING:
     from protobuf.wkt import Timestamp
 
     from .common_pb import RoomThreadingMode
-    from .message_types_pb import Message as Message_
+    from .message_types_pb import Message as Message_, ThreadViewerState
     from .users_pb import User
 
 
@@ -581,7 +581,7 @@ class GetThreadEventsRequest(Message[_GetThreadEventsRequestFields]):
         limit: int
         cursor: Oneof[Literal["before"], str] | Oneof[Literal["after"], str] | None
 
-_GetThreadEventsResponseFields: TypeAlias = Literal["page"]
+_GetThreadEventsResponseFields: TypeAlias = Literal["page", "viewer_state"]
 
 class GetThreadEventsResponse(Message[_GetThreadEventsResponseFields]):
     """
@@ -598,9 +598,15 @@ class GetThreadEventsResponse(Message[_GetThreadEventsResponseFields]):
             ```proto
             optional chatto.api.v1.RoomTimelinePage page = 1;
             ```
+        viewer_state:
+            Current viewer state, independent of the loaded message window.
+
+            ```proto
+            optional chatto.api.v1.ThreadViewerState viewer_state = 2;
+            ```
     """
 
-    __slots__ = ("page",)
+    __slots__ = ("page", "viewer_state")
 
     if TYPE_CHECKING:
 
@@ -608,10 +614,12 @@ class GetThreadEventsResponse(Message[_GetThreadEventsResponseFields]):
             self,
             *,
             page: RoomTimelinePage | None = None,
+            viewer_state: ThreadViewerState | None = None,
         ) -> None:
             pass
 
         page: RoomTimelinePage | None
+        viewer_state: ThreadViewerState | None
 
 _GetThreadEventsAroundRequestFields: TypeAlias = Literal["room_id", "thread_root_event_id", "event_id", "limit"]
 
@@ -674,7 +682,7 @@ class GetThreadEventsAroundRequest(Message[_GetThreadEventsAroundRequestFields])
         event_id: str
         limit: int
 
-_GetThreadEventsAroundResponseFields: TypeAlias = Literal["page", "target_index"]
+_GetThreadEventsAroundResponseFields: TypeAlias = Literal["page", "target_index", "viewer_state"]
 
 class GetThreadEventsAroundResponse(Message[_GetThreadEventsAroundResponseFields]):
     """
@@ -697,9 +705,15 @@ class GetThreadEventsAroundResponse(Message[_GetThreadEventsAroundResponseFields
             ```proto
             int32 target_index = 2;
             ```
+        viewer_state:
+            Current viewer state, independent of the loaded message window.
+
+            ```proto
+            optional chatto.api.v1.ThreadViewerState viewer_state = 3;
+            ```
     """
 
-    __slots__ = ("page", "target_index")
+    __slots__ = ("page", "target_index", "viewer_state")
 
     if TYPE_CHECKING:
 
@@ -708,15 +722,17 @@ class GetThreadEventsAroundResponse(Message[_GetThreadEventsAroundResponseFields
             *,
             page: RoomTimelinePage | None = None,
             target_index: int = 0,
+            viewer_state: ThreadViewerState | None = None,
         ) -> None:
             pass
 
         page: RoomTimelinePage | None
         target_index: int
+        viewer_state: ThreadViewerState | None
 
 
 _DESC = file_desc(
-    b'\n!chatto/api/v1/room_timeline.proto\x12\rchatto.api.v1\x1a\x1bbuf/validate/validate.proto\x1a\x1achatto/api/v1/common.proto\x1a!chatto/api/v1/message_types.proto\x1a\x19chatto/api/v1/users.proto\x1a\x1fgoogle/protobuf/timestamp.proto"\xab\x01\n\x14RoomTimelineIncludes\x12D\n\x05users\x18\x01 \x03(\x0b2..chatto.api.v1.RoomTimelineIncludes.UsersEntryR\x05users\x1aM\n\nUsersEntry\x12\x10\n\x03key\x18\x01 \x01(\tR\x03key\x12)\n\x05value\x18\x02 \x01(\x0b2\x13.chatto.api.v1.UserR\x05value:\x028\x01"0\n\x15RoomTimelineRoomEvent\x12\x17\n\x07room_id\x18\x01 \x01(\tR\x06roomId"I\n\x15RoomTimelineCallEvent\x12\x17\n\x07room_id\x18\x01 \x01(\tR\x06roomId\x12\x17\n\x07call_id\x18\x02 \x01(\tR\x06callId"\x89\x01\n%RoomTimelineThreadingModeChangedEvent\x12\x17\n\x07room_id\x18\x01 \x01(\tR\x06roomId\x12G\n\x0ethreading_mode\x18\x02 \x01(\x0e2 .chatto.api.v1.RoomThreadingModeR\rthreadingMode"E\n\x11RoomMessagePosted\x120\n\x07message\x18\x01 \x01(\x0b2\x16.chatto.api.v1.MessageR\x07message"\xf5\x07\n\x11RoomTimelineEvent\x12\x0e\n\x02id\x18\x01 \x01(\tR\x02id\x129\n\ncreated_at\x18\x02 \x01(\x0b2\x1a.google.protobuf.TimestampR\tcreatedAt\x12\x19\n\x08actor_id\x18\x03 \x01(\tR\x07actorId\x12I\n\x0emessage_posted\x18\n \x01(\x0b2 .chatto.api.v1.RoomMessagePostedH\x00R\rmessagePosted\x12I\n\x0croom_created\x18\x14 \x01(\x0b2$.chatto.api.v1.RoomTimelineRoomEventH\x00R\x0broomCreated\x12I\n\x0croom_updated\x18\x15 \x01(\x0b2$.chatto.api.v1.RoomTimelineRoomEventH\x00R\x0broomUpdated\x12I\n\x0croom_deleted\x18\x16 \x01(\x0b2$.chatto.api.v1.RoomTimelineRoomEventH\x00R\x0broomDeleted\x12K\n\rroom_archived\x18\x17 \x01(\x0b2$.chatto.api.v1.RoomTimelineRoomEventH\x00R\x0croomArchived\x12O\n\x0froom_unarchived\x18\x18 \x01(\x0b2$.chatto.api.v1.RoomTimelineRoomEventH\x00R\x0eroomUnarchived\x12u\n\x1broom_threading_mode_changed\x18\x19 \x01(\x0b24.chatto.api.v1.RoomTimelineThreadingModeChangedEventH\x00R\x18roomThreadingModeChanged\x12P\n\x10user_joined_room\x18\x1e \x01(\x0b2$.chatto.api.v1.RoomTimelineRoomEventH\x00R\x0euserJoinedRoom\x12L\n\x0euser_left_room\x18\x1f \x01(\x0b2$.chatto.api.v1.RoomTimelineRoomEventH\x00R\x0cuserLeftRoom\x12I\n\x0ccall_started\x18( \x01(\x0b2$.chatto.api.v1.RoomTimelineCallEventH\x00R\x0bcallStarted\x12E\n\ncall_ended\x18) \x01(\x0b2$.chatto.api.v1.RoomTimelineCallEventH\x00R\tcallEndedB\x07\n\x05event"\x89\x02\n\x10RoomTimelinePage\x128\n\x06events\x18\x01 \x03(\x0b2 .chatto.api.v1.RoomTimelineEventR\x06events\x12!\n\x0cstart_cursor\x18\x02 \x01(\tR\x0bstartCursor\x12\x1d\n\nend_cursor\x18\x03 \x01(\tR\tendCursor\x12\x1b\n\thas_older\x18\x04 \x01(\x08R\x08hasOlder\x12\x1b\n\thas_newer\x18\x05 \x01(\x08R\x08hasNewer\x12?\n\x08includes\x18\x06 \x01(\x0b2#.chatto.api.v1.RoomTimelineIncludesR\x08includes"\x8a\x01\n\x14GetRoomEventsRequest\x12 \n\x07room_id\x18\x01 \x01(\tR\x06roomIdB\x07\xbaH\x04r\x02\x10\x01\x12\x14\n\x05limit\x18\x02 \x01(\x05R\x05limit\x12\x18\n\x06before\x18\x03 \x01(\tH\x00R\x06before\x12\x16\n\x05after\x18\x04 \x01(\tH\x00R\x05afterB\x08\n\x06cursor"L\n\x15GetRoomEventsResponse\x123\n\x04page\x18\x01 \x01(\x0b2\x1f.chatto.api.v1.RoomTimelinePageR\x04page"x\n\x1aGetRoomEventsAroundRequest\x12 \n\x07room_id\x18\x01 \x01(\tR\x06roomIdB\x07\xbaH\x04r\x02\x10\x01\x12"\n\x08event_id\x18\x02 \x01(\tR\x07eventIdB\x07\xbaH\x04r\x02\x10\x01\x12\x14\n\x05limit\x18\x03 \x01(\x05R\x05limit"u\n\x1bGetRoomEventsAroundResponse\x123\n\x04page\x18\x01 \x01(\x0b2\x1f.chatto.api.v1.RoomTimelinePageR\x04page\x12!\n\x0ctarget_index\x18\x02 \x01(\x05R\x0btargetIndex"\xc6\x01\n\x16GetThreadEventsRequest\x12 \n\x07room_id\x18\x01 \x01(\tR\x06roomIdB\x07\xbaH\x04r\x02\x10\x01\x128\n\x14thread_root_event_id\x18\x02 \x01(\tR\x11threadRootEventIdB\x07\xbaH\x04r\x02\x10\x01\x12\x14\n\x05limit\x18\x03 \x01(\x05R\x05limit\x12\x18\n\x06before\x18\x04 \x01(\tH\x00R\x06before\x12\x16\n\x05after\x18\x05 \x01(\tH\x00R\x05afterB\x08\n\x06cursor"N\n\x17GetThreadEventsResponse\x123\n\x04page\x18\x01 \x01(\x0b2\x1f.chatto.api.v1.RoomTimelinePageR\x04page"\xb4\x01\n\x1cGetThreadEventsAroundRequest\x12 \n\x07room_id\x18\x01 \x01(\tR\x06roomIdB\x07\xbaH\x04r\x02\x10\x01\x128\n\x14thread_root_event_id\x18\x02 \x01(\tR\x11threadRootEventIdB\x07\xbaH\x04r\x02\x10\x01\x12"\n\x08event_id\x18\x03 \x01(\tR\x07eventIdB\x07\xbaH\x04r\x02\x10\x01\x12\x14\n\x05limit\x18\x04 \x01(\x05R\x05limit"w\n\x1dGetThreadEventsAroundResponse\x123\n\x04page\x18\x01 \x01(\x0b2\x1f.chatto.api.v1.RoomTimelinePageR\x04page\x12!\n\x0ctarget_index\x18\x02 \x01(\x05R\x0btargetIndexB|\n\x11com.chatto.api.v1B\x11RoomTimelineProtoP\x01\xa2\x02\x03CAX\xaa\x02\rChatto.Api.V1\xca\x02\rChatto\\Api\\V1\xe2\x02\x19Chatto\\Api\\V1\\GPBMetadata\xea\x02\x0fChatto::Api::V1b\x06proto3',
+    b'\n!chatto/api/v1/room_timeline.proto\x12\rchatto.api.v1\x1a\x1bbuf/validate/validate.proto\x1a\x1achatto/api/v1/common.proto\x1a!chatto/api/v1/message_types.proto\x1a\x19chatto/api/v1/users.proto\x1a\x1fgoogle/protobuf/timestamp.proto"\xab\x01\n\x14RoomTimelineIncludes\x12D\n\x05users\x18\x01 \x03(\x0b2..chatto.api.v1.RoomTimelineIncludes.UsersEntryR\x05users\x1aM\n\nUsersEntry\x12\x10\n\x03key\x18\x01 \x01(\tR\x03key\x12)\n\x05value\x18\x02 \x01(\x0b2\x13.chatto.api.v1.UserR\x05value:\x028\x01"0\n\x15RoomTimelineRoomEvent\x12\x17\n\x07room_id\x18\x01 \x01(\tR\x06roomId"I\n\x15RoomTimelineCallEvent\x12\x17\n\x07room_id\x18\x01 \x01(\tR\x06roomId\x12\x17\n\x07call_id\x18\x02 \x01(\tR\x06callId"\x89\x01\n%RoomTimelineThreadingModeChangedEvent\x12\x17\n\x07room_id\x18\x01 \x01(\tR\x06roomId\x12G\n\x0ethreading_mode\x18\x02 \x01(\x0e2 .chatto.api.v1.RoomThreadingModeR\rthreadingMode"E\n\x11RoomMessagePosted\x120\n\x07message\x18\x01 \x01(\x0b2\x16.chatto.api.v1.MessageR\x07message"\xf5\x07\n\x11RoomTimelineEvent\x12\x0e\n\x02id\x18\x01 \x01(\tR\x02id\x129\n\ncreated_at\x18\x02 \x01(\x0b2\x1a.google.protobuf.TimestampR\tcreatedAt\x12\x19\n\x08actor_id\x18\x03 \x01(\tR\x07actorId\x12I\n\x0emessage_posted\x18\n \x01(\x0b2 .chatto.api.v1.RoomMessagePostedH\x00R\rmessagePosted\x12I\n\x0croom_created\x18\x14 \x01(\x0b2$.chatto.api.v1.RoomTimelineRoomEventH\x00R\x0broomCreated\x12I\n\x0croom_updated\x18\x15 \x01(\x0b2$.chatto.api.v1.RoomTimelineRoomEventH\x00R\x0broomUpdated\x12I\n\x0croom_deleted\x18\x16 \x01(\x0b2$.chatto.api.v1.RoomTimelineRoomEventH\x00R\x0broomDeleted\x12K\n\rroom_archived\x18\x17 \x01(\x0b2$.chatto.api.v1.RoomTimelineRoomEventH\x00R\x0croomArchived\x12O\n\x0froom_unarchived\x18\x18 \x01(\x0b2$.chatto.api.v1.RoomTimelineRoomEventH\x00R\x0eroomUnarchived\x12u\n\x1broom_threading_mode_changed\x18\x19 \x01(\x0b24.chatto.api.v1.RoomTimelineThreadingModeChangedEventH\x00R\x18roomThreadingModeChanged\x12P\n\x10user_joined_room\x18\x1e \x01(\x0b2$.chatto.api.v1.RoomTimelineRoomEventH\x00R\x0euserJoinedRoom\x12L\n\x0euser_left_room\x18\x1f \x01(\x0b2$.chatto.api.v1.RoomTimelineRoomEventH\x00R\x0cuserLeftRoom\x12I\n\x0ccall_started\x18( \x01(\x0b2$.chatto.api.v1.RoomTimelineCallEventH\x00R\x0bcallStarted\x12E\n\ncall_ended\x18) \x01(\x0b2$.chatto.api.v1.RoomTimelineCallEventH\x00R\tcallEndedB\x07\n\x05event"\x89\x02\n\x10RoomTimelinePage\x128\n\x06events\x18\x01 \x03(\x0b2 .chatto.api.v1.RoomTimelineEventR\x06events\x12!\n\x0cstart_cursor\x18\x02 \x01(\tR\x0bstartCursor\x12\x1d\n\nend_cursor\x18\x03 \x01(\tR\tendCursor\x12\x1b\n\thas_older\x18\x04 \x01(\x08R\x08hasOlder\x12\x1b\n\thas_newer\x18\x05 \x01(\x08R\x08hasNewer\x12?\n\x08includes\x18\x06 \x01(\x0b2#.chatto.api.v1.RoomTimelineIncludesR\x08includes"\x8a\x01\n\x14GetRoomEventsRequest\x12 \n\x07room_id\x18\x01 \x01(\tR\x06roomIdB\x07\xbaH\x04r\x02\x10\x01\x12\x14\n\x05limit\x18\x02 \x01(\x05R\x05limit\x12\x18\n\x06before\x18\x03 \x01(\tH\x00R\x06before\x12\x16\n\x05after\x18\x04 \x01(\tH\x00R\x05afterB\x08\n\x06cursor"L\n\x15GetRoomEventsResponse\x123\n\x04page\x18\x01 \x01(\x0b2\x1f.chatto.api.v1.RoomTimelinePageR\x04page"x\n\x1aGetRoomEventsAroundRequest\x12 \n\x07room_id\x18\x01 \x01(\tR\x06roomIdB\x07\xbaH\x04r\x02\x10\x01\x12"\n\x08event_id\x18\x02 \x01(\tR\x07eventIdB\x07\xbaH\x04r\x02\x10\x01\x12\x14\n\x05limit\x18\x03 \x01(\x05R\x05limit"u\n\x1bGetRoomEventsAroundResponse\x123\n\x04page\x18\x01 \x01(\x0b2\x1f.chatto.api.v1.RoomTimelinePageR\x04page\x12!\n\x0ctarget_index\x18\x02 \x01(\x05R\x0btargetIndex"\xc6\x01\n\x16GetThreadEventsRequest\x12 \n\x07room_id\x18\x01 \x01(\tR\x06roomIdB\x07\xbaH\x04r\x02\x10\x01\x128\n\x14thread_root_event_id\x18\x02 \x01(\tR\x11threadRootEventIdB\x07\xbaH\x04r\x02\x10\x01\x12\x14\n\x05limit\x18\x03 \x01(\x05R\x05limit\x12\x18\n\x06before\x18\x04 \x01(\tH\x00R\x06before\x12\x16\n\x05after\x18\x05 \x01(\tH\x00R\x05afterB\x08\n\x06cursor"\x93\x01\n\x17GetThreadEventsResponse\x123\n\x04page\x18\x01 \x01(\x0b2\x1f.chatto.api.v1.RoomTimelinePageR\x04page\x12C\n\x0cviewer_state\x18\x02 \x01(\x0b2 .chatto.api.v1.ThreadViewerStateR\x0bviewerState"\xb4\x01\n\x1cGetThreadEventsAroundRequest\x12 \n\x07room_id\x18\x01 \x01(\tR\x06roomIdB\x07\xbaH\x04r\x02\x10\x01\x128\n\x14thread_root_event_id\x18\x02 \x01(\tR\x11threadRootEventIdB\x07\xbaH\x04r\x02\x10\x01\x12"\n\x08event_id\x18\x03 \x01(\tR\x07eventIdB\x07\xbaH\x04r\x02\x10\x01\x12\x14\n\x05limit\x18\x04 \x01(\x05R\x05limit"\xbc\x01\n\x1dGetThreadEventsAroundResponse\x123\n\x04page\x18\x01 \x01(\x0b2\x1f.chatto.api.v1.RoomTimelinePageR\x04page\x12!\n\x0ctarget_index\x18\x02 \x01(\x05R\x0btargetIndex\x12C\n\x0cviewer_state\x18\x03 \x01(\x0b2 .chatto.api.v1.ThreadViewerStateR\x0bviewerStateB|\n\x11com.chatto.api.v1B\x11RoomTimelineProtoP\x01\xa2\x02\x03CAX\xaa\x02\rChatto.Api.V1\xca\x02\rChatto\\Api\\V1\xe2\x02\x19Chatto\\Api\\V1\\GPBMetadata\xea\x02\x0fChatto::Api::V1b\x06proto3',
     [
         validate_pb.desc(),
         common_pb.desc(),

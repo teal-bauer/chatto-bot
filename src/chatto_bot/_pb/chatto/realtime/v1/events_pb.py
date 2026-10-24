@@ -521,7 +521,7 @@ class RoomUniversalChangedEvent(Message[_RoomUniversalChangedEventFields]):
         room_id: str
         universal: bool
 
-_RoomSlowModeChangedEventFields: TypeAlias = Literal["room_id", "slow_mode_seconds"]
+_RoomSlowModeChangedEventFields: TypeAlias = Literal["room_id", "slow_mode_seconds", "thread_slow_mode_seconds"]
 
 class RoomSlowModeChangedEvent(Message[_RoomSlowModeChangedEventFields]):
     """
@@ -540,9 +540,15 @@ class RoomSlowModeChangedEvent(Message[_RoomSlowModeChangedEventFields]):
             ```proto
             uint32 slow_mode_seconds = 2;
             ```
+        thread_slow_mode_seconds:
+            Independent interval within each thread. Zero disables it.
+
+            ```proto
+            optional uint32 thread_slow_mode_seconds = 3;
+            ```
     """
 
-    __slots__ = ("room_id", "slow_mode_seconds")
+    __slots__ = ("room_id", "slow_mode_seconds", "thread_slow_mode_seconds")
 
     if TYPE_CHECKING:
 
@@ -551,11 +557,13 @@ class RoomSlowModeChangedEvent(Message[_RoomSlowModeChangedEventFields]):
             *,
             room_id: str = "",
             slow_mode_seconds: int = 0,
+            thread_slow_mode_seconds: int | None = None,
         ) -> None:
             pass
 
         room_id: str
         slow_mode_seconds: int
+        thread_slow_mode_seconds: int
 
 _RoomThreadingModeChangedEventFields: TypeAlias = Literal["room_id", "threading_mode"]
 
@@ -1897,6 +1905,114 @@ class RoomReadStateChangedEvent(Message[_RoomReadStateChangedEventFields]):
 
         room_id: str
 
+_RoomInvitationCreatedEventFields: TypeAlias = Literal["room_id", "invitation_id"]
+
+class RoomInvitationCreatedEvent(Message[_RoomInvitationCreatedEventFields]):
+    """
+    An invitation created. Delivered only to its sender and recipient.
+
+    ```proto
+    message chatto.realtime.v1.RoomInvitationCreatedEvent
+    ```
+
+    Attributes:
+        room_id:
+            ```proto
+            string room_id = 1;
+            ```
+        invitation_id:
+            ```proto
+            string invitation_id = 2;
+            ```
+    """
+
+    __slots__ = ("room_id", "invitation_id")
+
+    if TYPE_CHECKING:
+
+        def __init__(
+            self,
+            *,
+            room_id: str = "",
+            invitation_id: str = "",
+        ) -> None:
+            pass
+
+        room_id: str
+        invitation_id: str
+
+_RoomInvitationAcceptedEventFields: TypeAlias = Literal["room_id", "invitation_id"]
+
+class RoomInvitationAcceptedEvent(Message[_RoomInvitationAcceptedEventFields]):
+    """
+    An invitation accepted. Delivered only to its sender and recipient.
+
+    ```proto
+    message chatto.realtime.v1.RoomInvitationAcceptedEvent
+    ```
+
+    Attributes:
+        room_id:
+            ```proto
+            string room_id = 1;
+            ```
+        invitation_id:
+            ```proto
+            string invitation_id = 2;
+            ```
+    """
+
+    __slots__ = ("room_id", "invitation_id")
+
+    if TYPE_CHECKING:
+
+        def __init__(
+            self,
+            *,
+            room_id: str = "",
+            invitation_id: str = "",
+        ) -> None:
+            pass
+
+        room_id: str
+        invitation_id: str
+
+_RoomInvitationDeclinedEventFields: TypeAlias = Literal["room_id", "invitation_id"]
+
+class RoomInvitationDeclinedEvent(Message[_RoomInvitationDeclinedEventFields]):
+    """
+    An invitation declined. Delivered only to its sender and recipient.
+
+    ```proto
+    message chatto.realtime.v1.RoomInvitationDeclinedEvent
+    ```
+
+    Attributes:
+        room_id:
+            ```proto
+            string room_id = 1;
+            ```
+        invitation_id:
+            ```proto
+            string invitation_id = 2;
+            ```
+    """
+
+    __slots__ = ("room_id", "invitation_id")
+
+    if TYPE_CHECKING:
+
+        def __init__(
+            self,
+            *,
+            room_id: str = "",
+            invitation_id: str = "",
+        ) -> None:
+            pass
+
+        room_id: str
+        invitation_id: str
+
 class AssetProcessingFailureCode(Enum):
     """
     AssetProcessingFailureCode identifies a stable processing failure class.
@@ -1932,7 +2048,7 @@ class AssetProcessingFailureCode(Enum):
 
 
 _DESC = file_desc(
-    b'\n\x1fchatto/realtime/v1/events.proto\x12\x12chatto.realtime.v1\x1a\x1achatto/api/v1/common.proto\x1a\x1cchatto/api/v1/presence.proto\x1a\x19chatto/api/v1/rooms.proto"/\n\x10RoleCreatedEvent\x12\x1b\n\trole_name\x18\x01 \x01(\tR\x08roleName"/\n\x10RoleUpdatedEvent\x12\x1b\n\trole_name\x18\x01 \x01(\tR\x08roleName"/\n\x10RoleDeletedEvent\x12\x1b\n\trole_name\x18\x01 \x01(\tR\x08roleName"4\n\x13RolesReorderedEvent\x12\x1d\n\nrole_names\x18\x01 \x03(\tR\troleNames"I\n\x11RoleAssignedEvent\x12\x17\n\x07user_id\x18\x01 \x01(\tR\x06userId\x12\x1b\n\trole_name\x18\x02 \x01(\tR\x08roleName"H\n\x10RoleRevokedEvent\x12\x17\n\x07user_id\x18\x01 \x01(\tR\x06userId\x12\x1b\n\trole_name\x18\x02 \x01(\tR\x08roleName":\n\x1bRolePermissionsChangedEvent\x12\x1b\n\trole_name\x18\x01 \x01(\tR\x08roleName"\x1f\n\x1dViewerPermissionsChangedEvent"\xf5\x01\n\x10RoomCreatedEvent\x12\x17\n\x07room_id\x18\x01 \x01(\tR\x06roomId\x12\x12\n\x04name\x18\x02 \x01(\tR\x04name\x12 \n\x0bdescription\x18\x03 \x01(\tR\x0bdescription\x12+\n\x04kind\x18\x04 \x01(\x0e2\x17.chatto.api.v1.RoomKindR\x04kind\x12\x1c\n\tuniversal\x18\x05 \x01(\x08R\tuniversal\x12G\n\x0ethreading_mode\x18\x06 \x01(\x0e2 .chatto.api.v1.RoomThreadingModeR\rthreadingMode"a\n\x10RoomUpdatedEvent\x12\x17\n\x07room_id\x18\x01 \x01(\tR\x06roomId\x12\x12\n\x04name\x18\x02 \x01(\tR\x04name\x12 \n\x0bdescription\x18\x03 \x01(\tR\x0bdescription"+\n\x10RoomDeletedEvent\x12\x17\n\x07room_id\x18\x01 \x01(\tR\x06roomId",\n\x11RoomArchivedEvent\x12\x17\n\x07room_id\x18\x01 \x01(\tR\x06roomId".\n\x13RoomUnarchivedEvent\x12\x17\n\x07room_id\x18\x01 \x01(\tR\x06roomId"R\n\x19RoomUniversalChangedEvent\x12\x17\n\x07room_id\x18\x01 \x01(\tR\x06roomId\x12\x1c\n\tuniversal\x18\x02 \x01(\x08R\tuniversal"_\n\x18RoomSlowModeChangedEvent\x12\x17\n\x07room_id\x18\x01 \x01(\tR\x06roomId\x12*\n\x11slow_mode_seconds\x18\x02 \x01(\rR\x0fslowModeSeconds"\x81\x01\n\x1dRoomThreadingModeChangedEvent\x12\x17\n\x07room_id\x18\x01 \x01(\tR\x06roomId\x12G\n\x0ethreading_mode\x18\x02 \x01(\x0e2 .chatto.api.v1.RoomThreadingModeR\rthreadingMode".\n\x13UserJoinedRoomEvent\x12\x17\n\x07room_id\x18\x01 \x01(\tR\x06roomId",\n\x11UserLeftRoomEvent\x12\x17\n\x07room_id\x18\x01 \x01(\tR\x06roomId"S\n\x1fVoiceCallParticipantJoinedEvent\x12\x17\n\x07room_id\x18\x01 \x01(\tR\x06roomId\x12\x17\n\x07call_id\x18\x02 \x01(\tR\x06callId"Q\n\x1dVoiceCallParticipantLeftEvent\x12\x17\n\x07room_id\x18\x01 \x01(\tR\x06roomId\x12\x17\n\x07call_id\x18\x02 \x01(\tR\x06callId"I\n\x15VoiceCallStartedEvent\x12\x17\n\x07room_id\x18\x01 \x01(\tR\x06roomId\x12\x17\n\x07call_id\x18\x02 \x01(\tR\x06callId"G\n\x13VoiceCallEndedEvent\x12\x17\n\x07room_id\x18\x01 \x01(\tR\x06roomId\x12\x17\n\x07call_id\x18\x02 \x01(\tR\x06callId"\xb9\x03\n\x12MessagePostedEvent\x12\x17\n\x07room_id\x18\x01 \x01(\tR\x06roomId\x12\x1e\n\x0bin_reply_to\x18\x02 \x01(\tR\tinReplyTo\x12/\n\x14thread_root_event_id\x18\x03 \x01(\tR\x11threadRootEventId\x12\'\n\x10echo_of_event_id\x18\x05 \x01(\tR\rechoOfEventId\x12A\n\x1eecho_from_thread_root_event_id\x18\x06 \x01(\tR\x19echoFromThreadRootEventId\x12>\n\x08mentions\x18\x07 \x03(\x0b2".chatto.realtime.v1.MessageMentionR\x08mentions\x12*\n\x0ebody_plaintext\x18\x08 \x01(\tH\x00R\rbodyPlaintext\x88\x01\x01\x124\n\troom_kind\x18\t \x01(\x0e2\x17.chatto.api.v1.RoomKindR\x08roomKindB\x11\n\x0f_body_plaintextJ\x04\x08\x04\x10\x05R\x12mentioned_user_ids",\n\x11DirectUserMention\x12\x17\n\x07user_id\x18\x01 \x01(\tR\x06userId"1\n\x12RoleMessageMention\x12\x1b\n\trole_name\x18\x01 \x01(\tR\x08roleName"\x14\n\x12HereMessageMention"\x13\n\x11AllMessageMention"\xc9\x02\n\x0eMessageMention\x12?\n\x06direct\x18\x02 \x01(\x0b2%.chatto.realtime.v1.DirectUserMentionH\x00R\x06direct\x12<\n\x04role\x18\x03 \x01(\x0b2&.chatto.realtime.v1.RoleMessageMentionH\x00R\x04role\x12<\n\x04here\x18\x04 \x01(\x0b2&.chatto.realtime.v1.HereMessageMentionH\x00R\x04here\x129\n\x03all\x18\x05 \x01(\x0b2%.chatto.realtime.v1.AllMessageMentionH\x00R\x03all\x12\'\n\x0fincludes_viewer\x18\x06 \x01(\x08R\x0eincludesViewerB\x07\n\x05causeJ\x04\x08\x01\x10\x02R\x07user_id"W\n\x12MessageEditedEvent\x12\x17\n\x07room_id\x18\x01 \x01(\tR\x06roomId\x12(\n\x10message_event_id\x18\x02 \x01(\tR\x0emessageEventId"Z\n\x15MessageRetractedEvent\x12\x17\n\x07room_id\x18\x01 \x01(\tR\x06roomId\x12(\n\x10message_event_id\x18\x02 \x01(\tR\x0emessageEventId"W\n\x12MessagePinnedEvent\x12\x17\n\x07room_id\x18\x01 \x01(\tR\x06roomId\x12(\n\x10message_event_id\x18\x02 \x01(\tR\x0emessageEventId"Y\n\x14MessageUnpinnedEvent\x12\x17\n\x07room_id\x18\x01 \x01(\tR\x06roomId\x12(\n\x10message_event_id\x18\x02 \x01(\tR\x0emessageEventId"^\n\x12ThreadCreatedEvent\x12\x17\n\x07room_id\x18\x01 \x01(\tR\x06roomId\x12/\n\x14thread_root_event_id\x18\x02 \x01(\tR\x11threadRootEventId"{\n\x1bAssetProcessingStartedEvent\x12\x19\n\x08asset_id\x18\x01 \x01(\tR\x07assetId\x12(\n\x10message_event_id\x18\x02 \x01(\tR\x0emessageEventId\x12\x17\n\x07room_id\x18\x03 \x01(\tR\x06roomId"\x8a\x01\n\x1dAssetProcessingSucceededEvent\x12\x19\n\x08asset_id\x18\x01 \x01(\tR\x07assetId\x12(\n\x10message_event_id\x18\x03 \x01(\tR\x0emessageEventId\x12\x17\n\x07room_id\x18\x04 \x01(\tR\x06roomIdJ\x04\x08\x02\x10\x03R\x05video"\xcd\x01\n\x1aAssetProcessingFailedEvent\x12\x19\n\x08asset_id\x18\x01 \x01(\tR\x07assetId\x12Q\n\x0cfailure_code\x18\x02 \x01(\x0e2..chatto.realtime.v1.AssetProcessingFailureCodeR\x0bfailureCode\x12(\n\x10message_event_id\x18\x03 \x01(\tR\x0emessageEventId\x12\x17\n\x07room_id\x18\x04 \x01(\tR\x06roomId"q\n\x11AssetDeletedEvent\x12\x19\n\x08asset_id\x18\x01 \x01(\tR\x07assetId\x12\x17\n\x07room_id\x18\x02 \x01(\tR\x06roomId\x12(\n\x10message_event_id\x18\x03 \x01(\tR\x0emessageEventId",\n\x16ServerMotdChangedEvent\x12\x12\n\x04motd\x18\x01 \x01(\tR\x04motd"I\n\x17UserAccountCreatedEvent\x12\x17\n\x07user_id\x18\x01 \x01(\tR\x06userId\x12\x15\n\x06is_bot\x18\x02 \x01(\x08R\x05isBot"2\n\x17UserAccountDeletedEvent\x12\x17\n\x07user_id\x18\x01 \x01(\tR\x06userId"m\n\x12ReactionAddedEvent\x12\x17\n\x07room_id\x18\x01 \x01(\tR\x06roomId\x12(\n\x10message_event_id\x18\x02 \x01(\tR\x0emessageEventId\x12\x14\n\x05emoji\x18\x03 \x01(\tR\x05emoji"o\n\x14ReactionRemovedEvent\x12\x17\n\x07room_id\x18\x01 \x01(\tR\x06roomId\x12(\n\x10message_event_id\x18\x02 \x01(\tR\x0emessageEventId\x12\x14\n\x05emoji\x18\x03 \x01(\tR\x05emoji"\x18\n\x16RoomLayoutChangedEvent"2\n\x17UserProfileChangedEvent\x12\x17\n\x07user_id\x18\x01 \x01(\tR\x06userId"\x1f\n\x1dViewerPreferencesChangedEvent"\x8c\x01\n\x1dThreadViewerStateChangedEvent\x12\x17\n\x07room_id\x18\x01 \x01(\tR\x06roomId\x12/\n\x14thread_root_event_id\x18\x02 \x01(\tR\x11threadRootEventId\x12!\n\x0cis_following\x18\x03 \x01(\x08R\x0bisFollowing"\x1b\n\x19ServerProfileChangedEvent"y\n\x0fUserTypingEvent\x12\x17\n\x07room_id\x18\x01 \x01(\tR\x06roomId\x124\n\x14thread_root_event_id\x18\x02 \x01(\tH\x00R\x11threadRootEventId\x88\x01\x01B\x17\n\x15_thread_root_event_id"M\n\x14PresenceChangedEvent\x125\n\x06status\x18\x01 \x01(\x0e2\x1d.chatto.api.v1.PresenceStatusR\x06status"&\n$ViewerPresencePreferenceChangedEvent"~\n#NotificationOccurrencesChangedEvent\x12;\n\x17created_notification_id\x18\x01 \x01(\tH\x00R\x15createdNotificationId\x88\x01\x01B\x1a\n\x18_created_notification_id"o\n#NotificationUnreadStateChangedEvent\x12\x17\n\x07room_id\x18\x01 \x01(\tR\x06roomId\x12/\n\x14thread_root_event_id\x18\x02 \x01(\tR\x11threadRootEventId"4\n\x19RoomReadStateChangedEvent\x12\x17\n\x07room_id\x18\x01 \x01(\tR\x06roomId*\xb2\x01\n\x1aAssetProcessingFailureCode\x12-\n)ASSET_PROCESSING_FAILURE_CODE_UNSPECIFIED\x10\x00\x123\n/ASSET_PROCESSING_FAILURE_CODE_PROCESSING_FAILED\x10\x01\x120\n,ASSET_PROCESSING_FAILURE_CODE_SOURCE_MISSING\x10\x02B\x8f\x01\n\x16com.chatto.realtime.v1B\x0bEventsProtoP\x01\xa2\x02\x03CRX\xaa\x02\x12Chatto.Realtime.V1\xca\x02\x12Chatto\\Realtime\\V1\xe2\x02\x1eChatto\\Realtime\\V1\\GPBMetadata\xea\x02\x14Chatto::Realtime::V1b\x06proto3',
+    b'\n\x1fchatto/realtime/v1/events.proto\x12\x12chatto.realtime.v1\x1a\x1achatto/api/v1/common.proto\x1a\x1cchatto/api/v1/presence.proto\x1a\x19chatto/api/v1/rooms.proto"/\n\x10RoleCreatedEvent\x12\x1b\n\trole_name\x18\x01 \x01(\tR\x08roleName"/\n\x10RoleUpdatedEvent\x12\x1b\n\trole_name\x18\x01 \x01(\tR\x08roleName"/\n\x10RoleDeletedEvent\x12\x1b\n\trole_name\x18\x01 \x01(\tR\x08roleName"4\n\x13RolesReorderedEvent\x12\x1d\n\nrole_names\x18\x01 \x03(\tR\troleNames"I\n\x11RoleAssignedEvent\x12\x17\n\x07user_id\x18\x01 \x01(\tR\x06userId\x12\x1b\n\trole_name\x18\x02 \x01(\tR\x08roleName"H\n\x10RoleRevokedEvent\x12\x17\n\x07user_id\x18\x01 \x01(\tR\x06userId\x12\x1b\n\trole_name\x18\x02 \x01(\tR\x08roleName":\n\x1bRolePermissionsChangedEvent\x12\x1b\n\trole_name\x18\x01 \x01(\tR\x08roleName"\x1f\n\x1dViewerPermissionsChangedEvent"\xf5\x01\n\x10RoomCreatedEvent\x12\x17\n\x07room_id\x18\x01 \x01(\tR\x06roomId\x12\x12\n\x04name\x18\x02 \x01(\tR\x04name\x12 \n\x0bdescription\x18\x03 \x01(\tR\x0bdescription\x12+\n\x04kind\x18\x04 \x01(\x0e2\x17.chatto.api.v1.RoomKindR\x04kind\x12\x1c\n\tuniversal\x18\x05 \x01(\x08R\tuniversal\x12G\n\x0ethreading_mode\x18\x06 \x01(\x0e2 .chatto.api.v1.RoomThreadingModeR\rthreadingMode"a\n\x10RoomUpdatedEvent\x12\x17\n\x07room_id\x18\x01 \x01(\tR\x06roomId\x12\x12\n\x04name\x18\x02 \x01(\tR\x04name\x12 \n\x0bdescription\x18\x03 \x01(\tR\x0bdescription"+\n\x10RoomDeletedEvent\x12\x17\n\x07room_id\x18\x01 \x01(\tR\x06roomId",\n\x11RoomArchivedEvent\x12\x17\n\x07room_id\x18\x01 \x01(\tR\x06roomId".\n\x13RoomUnarchivedEvent\x12\x17\n\x07room_id\x18\x01 \x01(\tR\x06roomId"R\n\x19RoomUniversalChangedEvent\x12\x17\n\x07room_id\x18\x01 \x01(\tR\x06roomId\x12\x1c\n\tuniversal\x18\x02 \x01(\x08R\tuniversal"\xba\x01\n\x18RoomSlowModeChangedEvent\x12\x17\n\x07room_id\x18\x01 \x01(\tR\x06roomId\x12*\n\x11slow_mode_seconds\x18\x02 \x01(\rR\x0fslowModeSeconds\x12<\n\x18thread_slow_mode_seconds\x18\x03 \x01(\rH\x00R\x15threadSlowModeSeconds\x88\x01\x01B\x1b\n\x19_thread_slow_mode_seconds"\x81\x01\n\x1dRoomThreadingModeChangedEvent\x12\x17\n\x07room_id\x18\x01 \x01(\tR\x06roomId\x12G\n\x0ethreading_mode\x18\x02 \x01(\x0e2 .chatto.api.v1.RoomThreadingModeR\rthreadingMode".\n\x13UserJoinedRoomEvent\x12\x17\n\x07room_id\x18\x01 \x01(\tR\x06roomId",\n\x11UserLeftRoomEvent\x12\x17\n\x07room_id\x18\x01 \x01(\tR\x06roomId"S\n\x1fVoiceCallParticipantJoinedEvent\x12\x17\n\x07room_id\x18\x01 \x01(\tR\x06roomId\x12\x17\n\x07call_id\x18\x02 \x01(\tR\x06callId"Q\n\x1dVoiceCallParticipantLeftEvent\x12\x17\n\x07room_id\x18\x01 \x01(\tR\x06roomId\x12\x17\n\x07call_id\x18\x02 \x01(\tR\x06callId"I\n\x15VoiceCallStartedEvent\x12\x17\n\x07room_id\x18\x01 \x01(\tR\x06roomId\x12\x17\n\x07call_id\x18\x02 \x01(\tR\x06callId"G\n\x13VoiceCallEndedEvent\x12\x17\n\x07room_id\x18\x01 \x01(\tR\x06roomId\x12\x17\n\x07call_id\x18\x02 \x01(\tR\x06callId"\xb9\x03\n\x12MessagePostedEvent\x12\x17\n\x07room_id\x18\x01 \x01(\tR\x06roomId\x12\x1e\n\x0bin_reply_to\x18\x02 \x01(\tR\tinReplyTo\x12/\n\x14thread_root_event_id\x18\x03 \x01(\tR\x11threadRootEventId\x12\'\n\x10echo_of_event_id\x18\x05 \x01(\tR\rechoOfEventId\x12A\n\x1eecho_from_thread_root_event_id\x18\x06 \x01(\tR\x19echoFromThreadRootEventId\x12>\n\x08mentions\x18\x07 \x03(\x0b2".chatto.realtime.v1.MessageMentionR\x08mentions\x12*\n\x0ebody_plaintext\x18\x08 \x01(\tH\x00R\rbodyPlaintext\x88\x01\x01\x124\n\troom_kind\x18\t \x01(\x0e2\x17.chatto.api.v1.RoomKindR\x08roomKindB\x11\n\x0f_body_plaintextJ\x04\x08\x04\x10\x05R\x12mentioned_user_ids",\n\x11DirectUserMention\x12\x17\n\x07user_id\x18\x01 \x01(\tR\x06userId"1\n\x12RoleMessageMention\x12\x1b\n\trole_name\x18\x01 \x01(\tR\x08roleName"\x14\n\x12HereMessageMention"\x13\n\x11AllMessageMention"\xc9\x02\n\x0eMessageMention\x12?\n\x06direct\x18\x02 \x01(\x0b2%.chatto.realtime.v1.DirectUserMentionH\x00R\x06direct\x12<\n\x04role\x18\x03 \x01(\x0b2&.chatto.realtime.v1.RoleMessageMentionH\x00R\x04role\x12<\n\x04here\x18\x04 \x01(\x0b2&.chatto.realtime.v1.HereMessageMentionH\x00R\x04here\x129\n\x03all\x18\x05 \x01(\x0b2%.chatto.realtime.v1.AllMessageMentionH\x00R\x03all\x12\'\n\x0fincludes_viewer\x18\x06 \x01(\x08R\x0eincludesViewerB\x07\n\x05causeJ\x04\x08\x01\x10\x02R\x07user_id"W\n\x12MessageEditedEvent\x12\x17\n\x07room_id\x18\x01 \x01(\tR\x06roomId\x12(\n\x10message_event_id\x18\x02 \x01(\tR\x0emessageEventId"Z\n\x15MessageRetractedEvent\x12\x17\n\x07room_id\x18\x01 \x01(\tR\x06roomId\x12(\n\x10message_event_id\x18\x02 \x01(\tR\x0emessageEventId"W\n\x12MessagePinnedEvent\x12\x17\n\x07room_id\x18\x01 \x01(\tR\x06roomId\x12(\n\x10message_event_id\x18\x02 \x01(\tR\x0emessageEventId"Y\n\x14MessageUnpinnedEvent\x12\x17\n\x07room_id\x18\x01 \x01(\tR\x06roomId\x12(\n\x10message_event_id\x18\x02 \x01(\tR\x0emessageEventId"^\n\x12ThreadCreatedEvent\x12\x17\n\x07room_id\x18\x01 \x01(\tR\x06roomId\x12/\n\x14thread_root_event_id\x18\x02 \x01(\tR\x11threadRootEventId"{\n\x1bAssetProcessingStartedEvent\x12\x19\n\x08asset_id\x18\x01 \x01(\tR\x07assetId\x12(\n\x10message_event_id\x18\x02 \x01(\tR\x0emessageEventId\x12\x17\n\x07room_id\x18\x03 \x01(\tR\x06roomId"\x8a\x01\n\x1dAssetProcessingSucceededEvent\x12\x19\n\x08asset_id\x18\x01 \x01(\tR\x07assetId\x12(\n\x10message_event_id\x18\x03 \x01(\tR\x0emessageEventId\x12\x17\n\x07room_id\x18\x04 \x01(\tR\x06roomIdJ\x04\x08\x02\x10\x03R\x05video"\xcd\x01\n\x1aAssetProcessingFailedEvent\x12\x19\n\x08asset_id\x18\x01 \x01(\tR\x07assetId\x12Q\n\x0cfailure_code\x18\x02 \x01(\x0e2..chatto.realtime.v1.AssetProcessingFailureCodeR\x0bfailureCode\x12(\n\x10message_event_id\x18\x03 \x01(\tR\x0emessageEventId\x12\x17\n\x07room_id\x18\x04 \x01(\tR\x06roomId"q\n\x11AssetDeletedEvent\x12\x19\n\x08asset_id\x18\x01 \x01(\tR\x07assetId\x12\x17\n\x07room_id\x18\x02 \x01(\tR\x06roomId\x12(\n\x10message_event_id\x18\x03 \x01(\tR\x0emessageEventId",\n\x16ServerMotdChangedEvent\x12\x12\n\x04motd\x18\x01 \x01(\tR\x04motd"I\n\x17UserAccountCreatedEvent\x12\x17\n\x07user_id\x18\x01 \x01(\tR\x06userId\x12\x15\n\x06is_bot\x18\x02 \x01(\x08R\x05isBot"2\n\x17UserAccountDeletedEvent\x12\x17\n\x07user_id\x18\x01 \x01(\tR\x06userId"m\n\x12ReactionAddedEvent\x12\x17\n\x07room_id\x18\x01 \x01(\tR\x06roomId\x12(\n\x10message_event_id\x18\x02 \x01(\tR\x0emessageEventId\x12\x14\n\x05emoji\x18\x03 \x01(\tR\x05emoji"o\n\x14ReactionRemovedEvent\x12\x17\n\x07room_id\x18\x01 \x01(\tR\x06roomId\x12(\n\x10message_event_id\x18\x02 \x01(\tR\x0emessageEventId\x12\x14\n\x05emoji\x18\x03 \x01(\tR\x05emoji"\x18\n\x16RoomLayoutChangedEvent"2\n\x17UserProfileChangedEvent\x12\x17\n\x07user_id\x18\x01 \x01(\tR\x06userId"\x1f\n\x1dViewerPreferencesChangedEvent"\x8c\x01\n\x1dThreadViewerStateChangedEvent\x12\x17\n\x07room_id\x18\x01 \x01(\tR\x06roomId\x12/\n\x14thread_root_event_id\x18\x02 \x01(\tR\x11threadRootEventId\x12!\n\x0cis_following\x18\x03 \x01(\x08R\x0bisFollowing"\x1b\n\x19ServerProfileChangedEvent"y\n\x0fUserTypingEvent\x12\x17\n\x07room_id\x18\x01 \x01(\tR\x06roomId\x124\n\x14thread_root_event_id\x18\x02 \x01(\tH\x00R\x11threadRootEventId\x88\x01\x01B\x17\n\x15_thread_root_event_id"M\n\x14PresenceChangedEvent\x125\n\x06status\x18\x01 \x01(\x0e2\x1d.chatto.api.v1.PresenceStatusR\x06status"&\n$ViewerPresencePreferenceChangedEvent"~\n#NotificationOccurrencesChangedEvent\x12;\n\x17created_notification_id\x18\x01 \x01(\tH\x00R\x15createdNotificationId\x88\x01\x01B\x1a\n\x18_created_notification_id"o\n#NotificationUnreadStateChangedEvent\x12\x17\n\x07room_id\x18\x01 \x01(\tR\x06roomId\x12/\n\x14thread_root_event_id\x18\x02 \x01(\tR\x11threadRootEventId"4\n\x19RoomReadStateChangedEvent\x12\x17\n\x07room_id\x18\x01 \x01(\tR\x06roomId"Z\n\x1aRoomInvitationCreatedEvent\x12\x17\n\x07room_id\x18\x01 \x01(\tR\x06roomId\x12#\n\rinvitation_id\x18\x02 \x01(\tR\x0cinvitationId"[\n\x1bRoomInvitationAcceptedEvent\x12\x17\n\x07room_id\x18\x01 \x01(\tR\x06roomId\x12#\n\rinvitation_id\x18\x02 \x01(\tR\x0cinvitationId"[\n\x1bRoomInvitationDeclinedEvent\x12\x17\n\x07room_id\x18\x01 \x01(\tR\x06roomId\x12#\n\rinvitation_id\x18\x02 \x01(\tR\x0cinvitationId*\xb2\x01\n\x1aAssetProcessingFailureCode\x12-\n)ASSET_PROCESSING_FAILURE_CODE_UNSPECIFIED\x10\x00\x123\n/ASSET_PROCESSING_FAILURE_CODE_PROCESSING_FAILED\x10\x01\x120\n,ASSET_PROCESSING_FAILURE_CODE_SOURCE_MISSING\x10\x02B\x8f\x01\n\x16com.chatto.realtime.v1B\x0bEventsProtoP\x01\xa2\x02\x03CRX\xaa\x02\x12Chatto.Realtime.V1\xca\x02\x12Chatto\\Realtime\\V1\xe2\x02\x1eChatto\\Realtime\\V1\\GPBMetadata\xea\x02\x14Chatto::Realtime::V1b\x06proto3',
     [
         common_pb.desc(),
         presence_pb.desc(),
@@ -1992,6 +2108,9 @@ _DESC = file_desc(
         "NotificationOccurrencesChangedEvent": NotificationOccurrencesChangedEvent,
         "NotificationUnreadStateChangedEvent": NotificationUnreadStateChangedEvent,
         "RoomReadStateChangedEvent": RoomReadStateChangedEvent,
+        "RoomInvitationCreatedEvent": RoomInvitationCreatedEvent,
+        "RoomInvitationAcceptedEvent": RoomInvitationAcceptedEvent,
+        "RoomInvitationDeclinedEvent": RoomInvitationDeclinedEvent,
         "AssetProcessingFailureCode": AssetProcessingFailureCode,
     },
 )
