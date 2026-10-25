@@ -30,3 +30,6 @@ jobs:
 
       - name: Build package
         run: uv build
+
+      - name: Import installed wheel
+        run: uv run --no-project --isolated --with ./dist/*.whl python -c "import chatto_bot"
